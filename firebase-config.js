@@ -1,6 +1,7 @@
-// IDFLIX Firebase Web Configuration
+// Firebase Web App config untuk project IDFLIX.
+// Config web Firebase boleh berada di frontend; keamanan data diatur oleh Realtime Database Rules.
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB2eAOxLs6ri2bmuI30FnAUGCDC8EVLimk",
+  apiKey: "AIzaB2eAOxLs6ri2bmuI30FnAUGCDC8EVLimk",
   authDomain: "idflix-219d7.firebaseapp.com",
   databaseURL: "https://idflix-219d7-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "idflix-219d7",
