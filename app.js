@@ -11,7 +11,7 @@ const I = {
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
 let films = FILMS;                       // ← ganti dengan data Firebase di loadFilms()
 let favs = [];
-let progress = Object.fromEntries(FILMS.filter(f=>f.progress).map(f=>[f.id,f.progress]));
+let progress = {};
 let history = {};
 let currentUser = null;
 let userDataReady = Promise.resolve();
@@ -49,10 +49,14 @@ function saveProgress(id, value, duration){
   if(value >= .97) return ref.remove();
   return ref.set({progress:value, duration:Number(duration)||0, updatedAt:firebase.database.ServerValue.TIMESTAMP});
 }
-function saveHistory(id){
-  history[id] = {watchedAt:Date.now()};
+function saveHistory(id, completed=false){
+  const old = history[id] || {};
+  history[id] = {watchedAt:old.watchedAt || Date.now(), completed:completed || !!old.completed};
   if(!currentUser) return Promise.resolve();
-  return userRef(`history/${id}`).set({watchedAt:firebase.database.ServerValue.TIMESTAMP});
+  return userRef(`history/${id}`).set({
+    watchedAt: old.watchedAt ? old.watchedAt : firebase.database.ServerValue.TIMESTAMP,
+    completed: history[id].completed
+  });
 }
 
 const normalize = (id,f) => { const t=f.title||"Tanpa Judul", g=Array.isArray(f.genre)?f.genre:String(f.genre||"").split(",").map(x=>x.trim()).filter(Boolean);
@@ -80,7 +84,7 @@ const card = (f,opt={}) => `<a class="card ${opt.wide?"wide":""}" href="#/film/$
   ${opt.wide?"":`<span class="rate">${ic("star")}${f.rating}</span>`}
   <div class="hov"><span>${ic("play")}</span></div>
   ${opt.bar?`<div class="bar"><i style="width:${Math.round((progress[f.id]||0)*100)}%"></i></div>`:""}</div>
-  <h3>${esc(f.title)}</h3><p>${f.year} • ${f.genre[0]}</p></a>`;
+  <h3>${esc(f.title)}</h3><p>${opt.status||`${f.year} • ${f.genre[0]}`}</p></a>`;
 const section = (title,body,link) => `<section class="sec"><div class="sec-head"><h2>${title}</h2>${link?`<a href="${link}">Lihat Semua ${ic("chev")}</a>`:""}</div>${body}</section>`;
 const row = (list,opt) => `<div class="row">${list.map(f=>card(f,opt)).join("")}</div>`;
 const grid = list => `<div class="grid">${list.map(f=>card(f)).join("")}</div>`;
@@ -125,10 +129,16 @@ const resultsHTML = (term,res) => !term ? `${empty("search","Mulai mencari","Ket
   : res.length ? grid(res) : empty("search","Tidak ada hasil",`Tidak ada film yang cocok dengan “${esc(term)}”. Coba kata kunci lain.`);
 function profile(){
   const fl = films.filter(f=>favs.includes(f.id));
-  const cont = films.filter(f=>progress[f.id]>0).sort((a,b)=>(history[b.id]?.watchedAt||0)-(history[a.id]?.watchedAt||0));
+  const watched = films.filter(f=>history[f.id]).sort((a,b)=>(history[b.id]?.watchedAt||0)-(history[a.id]?.watchedAt||0));
+  const historyBody = watched.length ? `<div class="row">${watched.map(f=>{
+    const pct=Math.round((progress[f.id]||0)*100);
+    const done=!!history[f.id]?.completed || pct>=97;
+    const status=done ? "Sudah Ditonton" : pct>0 ? `Sedang Ditonton • ${pct}%` : "Sudah Pernah Diputar";
+    return card(f,{wide:1,bar:!done,status});
+  }).join("")}</div>` : empty("clock","Belum ada riwayat","Film yang kamu putar akan muncul di sini.");
   return `<h1 class="page-title">Koleksi Saya</h1>`
    + section("Favorit Saya", fl.length?grid(fl):empty("heart","Belum ada favorit","Tekan “Tambah ke Favorit” pada film untuk menyimpannya di sini."))
-   + section("Riwayat Tontonan", cont.length?row(cont,{wide:1,bar:1}):empty("clock","Belum ada riwayat","Film yang kamu tonton akan muncul di sini."));
+   + section("Riwayat Tontonan", historyBody);
 }
 function detail(id){
   const f=byId(id); if(!f) return notFound();
@@ -180,7 +190,7 @@ function bindPlayer(f){
   v.addEventListener("loadedmetadata",()=>{ const s=progress[f.id]; if(s>0&&s<.97) v.currentTime=s*v.duration; });
   v.addEventListener("play",()=>saveHistory(f.id));
   v.addEventListener("timeupdate",()=>{ if(!v.duration||Date.now()-last<1500) return; last=Date.now(); saveProgress(f.id,v.currentTime/v.duration,v.duration); });
-  v.addEventListener("ended",()=>saveProgress(f.id,1,v.duration));
+  v.addEventListener("ended",()=>{ saveHistory(f.id,true); saveProgress(f.id,1,v.duration); });
 }
 function liveSearch(val){
   const on = location.hash.startsWith("#/search");
