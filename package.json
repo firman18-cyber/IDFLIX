@@ -1,0 +1,11 @@
+{
+  "name": "idflix",
+  "private": true,
+  "scripts": {
+    "deploy": "npx wrangler deploy",
+    "preview": "npx wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.24.4"
+  }
+}
