@@ -1,4 +1,5 @@
-const firebaseConfig = {
+// IDFLIX Firebase Web Configuration
+window.FIREBASE_CONFIG = {
   apiKey: "AIzaSyB2eAOxLs6ri2bmuI30FnAUGCDC8EVLimk",
   authDomain: "idflix-219d7.firebaseapp.com",
   databaseURL: "https://idflix-219d7-default-rtdb.asia-southeast1.firebasedatabase.app",

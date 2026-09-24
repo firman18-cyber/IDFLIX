@@ -9,50 +9,40 @@ const I = {
   clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', crown:'<path d="M4 8l4 4 4-7 4 7 4-4-2 11H6z"/>'
 };
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
-let films = FILMS;                       // ← ganti dengan data Firebase di loadFilms()
+let films = FILMS;
 let favs = [];
 let progress = Object.fromEntries(FILMS.filter(f=>f.progress).map(f=>[f.id,f.progress]));
-let history = {};
 let currentUser = null;
-let userDataReady = Promise.resolve();
+let userReady = false;
 let heroTimer;
 
-// Firebase Anonymous Auth + Realtime Database untuk data pribadi pengguna.
-// Tidak menyimpan favorit/progress di localStorage.
-function userRef(path="") {
-  return currentUser ? firebase.database().ref(`users/${currentUser.uid}${path ? "/"+path : ""}`) : null;
-}
-async function initUserData(){
-  if(!window.firebase || !window.FIREBASE_CONFIG || /PROJECT/.test(window.FIREBASE_CONFIG.databaseURL||"PROJECT")) return;
+async function initFirebase(){
+  const c = window.FIREBASE_CONFIG;
+  if(!window.firebase || !c || /PROJECT/.test(c.databaseURL||"PROJECT")) return null;
+  if(!firebase.apps.length) firebase.initializeApp(c);
   try {
-    if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
-    if(!firebase.auth) return;
-    const cred = await firebase.auth().signInAnonymously();
-    currentUser = cred.user;
-    const snap = await userRef().once("value");
+    if(!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
+    currentUser = firebase.auth().currentUser;
+    if(!currentUser) return null;
+    const snap = await firebase.database().ref("users/"+currentUser.uid).once("value");
     const data = snap.val() || {};
-    favs = data.favorites ? Object.keys(data.favorites).filter(k=>data.favorites[k]) : [];
-    progress = data.continueWatching ? Object.fromEntries(Object.entries(data.continueWatching).map(([id,v])=>[id,Number(v.progress)||0])) : {};
-    history = data.history || {};
+    favs = Array.isArray(data.favorites) ? data.favorites : Object.keys(data.favorites||{}).filter(k=>data.favorites[k]);
+    progress = data.continueWatching || progress;
+    userReady = true;
+    return currentUser;
   } catch(err) {
-    console.warn("Firebase user data tidak tersedia:", err);
+    console.warn("Firebase user init failed:", err);
+    return null;
   }
 }
-function saveFavorite(id, active){
-  if(!currentUser) return Promise.resolve();
-  return userRef(`favorites/${id}`).set(active ? true : null);
-}
-function saveProgress(id, value, duration){
-  progress[id] = value;
-  if(!currentUser) return Promise.resolve();
-  const ref = userRef(`continueWatching/${id}`);
-  if(value >= .97) return ref.remove();
-  return ref.set({progress:value, duration:Number(duration)||0, updatedAt:firebase.database.ServerValue.TIMESTAMP});
-}
-function saveHistory(id){
-  history[id] = {watchedAt:Date.now()};
-  if(!currentUser) return Promise.resolve();
-  return userRef(`history/${id}`).set({watchedAt:firebase.database.ServerValue.TIMESTAMP});
+async function saveUserData(){
+  if(!currentUser) return;
+  try {
+    await firebase.database().ref("users/"+currentUser.uid).update({
+      favorites: favs,
+      continueWatching: progress
+    });
+  } catch(err) { console.warn("Firebase save failed:", err); }
 }
 
 const normalize = (id,f) => { const t=f.title||"Tanpa Judul", g=Array.isArray(f.genre)?f.genre:String(f.genre||"").split(",").map(x=>x.trim()).filter(Boolean);
@@ -124,9 +114,8 @@ function search(q){
 const resultsHTML = (term,res) => !term ? `${empty("search","Mulai mencari","Ketik judul, genre, atau tahun rilis film.")}<div class="sec"><div class="sec-head"><h2>Telusuri genre</h2></div>${chips("","#/movies")}</div>`
   : res.length ? grid(res) : empty("search","Tidak ada hasil",`Tidak ada film yang cocok dengan “${esc(term)}”. Coba kata kunci lain.`);
 function profile(){
-  const fl = films.filter(f=>favs.includes(f.id));
-  const cont = films.filter(f=>progress[f.id]>0).sort((a,b)=>(history[b.id]?.watchedAt||0)-(history[a.id]?.watchedAt||0));
-  return `<h1 class="page-title">Koleksi Saya</h1>`
+  const fl = films.filter(f=>favs.includes(f.id)), cont = films.filter(f=>progress[f.id]>0);
+  return `<h1 class="page-title">Profil</h1>`
    + section("Favorit Saya", fl.length?grid(fl):empty("heart","Belum ada favorit","Tekan “Tambah ke Favorit” pada film untuk menyimpannya di sini."))
    + section("Riwayat Tontonan", cont.length?row(cont,{wide:1,bar:1}):empty("clock","Belum ada riwayat","Film yang kamu tonton akan muncul di sini."));
 }
@@ -178,9 +167,7 @@ function bindPlayer(f){
   if(!f) return; const v=$("#vid"), p=$("#player"); let last=0;
   v.addEventListener("error",()=>p.classList.add("fail"));
   v.addEventListener("loadedmetadata",()=>{ const s=progress[f.id]; if(s>0&&s<.97) v.currentTime=s*v.duration; });
-  v.addEventListener("play",()=>saveHistory(f.id));
-  v.addEventListener("timeupdate",()=>{ if(!v.duration||Date.now()-last<1500) return; last=Date.now(); saveProgress(f.id,v.currentTime/v.duration,v.duration); });
-  v.addEventListener("ended",()=>saveProgress(f.id,1,v.duration));
+  v.addEventListener("timeupdate",()=>{ if(!v.duration||Date.now()-last<1500) return; last=Date.now(); progress[f.id]=v.currentTime/v.duration; saveUserData(); });
 }
 function liveSearch(val){
   const on = location.hash.startsWith("#/search");
@@ -194,9 +181,9 @@ function liveSearch(val){
 document.addEventListener("input",e=>{ if(e.target.id==="topSearch"||e.target.id==="pageSearch"){ const v=e.target.value; liveSearch(v); const o=$("#topSearch"),m=$("#pageSearch"); if(o&&o!==e.target)o.value=v; if(m&&m!==e.target)m.value=v; } });
 document.addEventListener("click",e=>{
   const fb=e.target.closest("[data-fav]"), dt=e.target.closest("[data-slide]");
-  if(fb){ const id=fb.dataset.fav; const active=!favs.includes(id); favs=active?[...favs,id]:favs.filter(x=>x!==id); saveFavorite(id,active);
+  if(fb){ const id=fb.dataset.fav; favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id]; saveUserData();
     const f=byId(id); fb.outerHTML=favBtn(f); return; }
   if(dt) window.__slide(+dt.dataset.slide);
 });
 window.addEventListener("hashchange",router);
-Promise.all([loadFilms(), initUserData()]).then(()=>router());
+Promise.all([initFirebase(), loadFilms()]).then(()=>router());
