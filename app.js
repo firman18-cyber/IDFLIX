@@ -9,64 +9,32 @@ const I = {
   clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', crown:'<path d="M4 8l4 4 4-7 4 7 4-4-2 11H6z"/>'
 };
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
+const store = {
+  get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+};
 let films = FILMS;                       // ← ganti dengan data Firebase di loadFilms()
-let favs = [];
-let progress = {};
-let history = {};
-let currentUser = null;
-let userDataReady = Promise.resolve();
+let favs = store.get("idflix:favs", []);
+let progress = store.get("idflix:progress", Object.fromEntries(FILMS.filter(f=>f.progress).map(f=>[f.id,f.progress])));
 let heroTimer;
 
-// Firebase Anonymous Auth + Realtime Database untuk data pribadi pengguna.
-// Tidak menyimpan favorit/progress di localStorage.
-function userRef(path="") {
-  return currentUser ? firebase.database().ref(`users/${currentUser.uid}${path ? "/"+path : ""}`) : null;
-}
-async function initUserData(){
-  if(!window.firebase || !window.FIREBASE_CONFIG || /PROJECT/.test(window.FIREBASE_CONFIG.databaseURL||"PROJECT")) return;
-  try {
-    if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
-    if(!firebase.auth) return;
-    const cred = await firebase.auth().signInAnonymously();
-    currentUser = cred.user;
-    const snap = await userRef().once("value");
-    const data = snap.val() || {};
-    favs = data.favorites ? Object.keys(data.favorites).filter(k=>data.favorites[k]) : [];
-    progress = data.continueWatching ? Object.fromEntries(Object.entries(data.continueWatching).map(([id,v])=>[id,Number(v.progress)||0])) : {};
-    history = data.history || {};
-  } catch(err) {
-    console.warn("Firebase user data tidak tersedia:", err);
-  }
-}
-function saveFavorite(id, active){
-  if(!currentUser) return Promise.resolve();
-  return userRef(`favorites/${id}`).set(active ? true : null);
-}
-function saveProgress(id, value, duration){
-  progress[id] = value;
-  if(!currentUser) return Promise.resolve();
-  const ref = userRef(`continueWatching/${id}`);
-  if(value >= .97) return ref.remove();
-  return ref.set({progress:value, duration:Number(duration)||0, updatedAt:firebase.database.ServerValue.TIMESTAMP});
-}
-function saveHistory(id, completed=false){
-  const old = history[id] || {};
-  history[id] = {watchedAt:old.watchedAt || Date.now(), completed:completed || !!old.completed};
-  if(!currentUser) return Promise.resolve();
-  return userRef(`history/${id}`).set({
-    watchedAt: old.watchedAt ? old.watchedAt : firebase.database.ServerValue.TIMESTAMP,
-    completed: history[id].completed
-  });
-}
-
-const normalize = (id,f) => { const t=f.title||"Tanpa Judul", g=Array.isArray(f.genre)?f.genre:String(f.genre||"").split(",").map(x=>x.trim()).filter(Boolean);
+const normalize = (id,f) => {
+  const t=f.title||"Tanpa Judul", g=Array.isArray(f.genre)?f.genre:String(f.genre||"").split(",").map(x=>x.trim()).filter(Boolean);
   const poster=f.poster||art(t,"#3a3a48","#0f0f16",400,600);
-  return {id,title:t,year:f.year||"",genre:g.length?g:["Lainnya"],duration:f.duration||"",rating:Number(f.rating)||0,description:f.description||"",videoUrl:f.videoUrl||"",addedAt:f.addedAt||0,poster,backdrop:f.backdrop||art(t,"#3a3a48","#0f0f16",1280,720)}; };
+  const rawVideos=f.videos&&typeof f.videos==="object"?f.videos:{};
+  const videos=Object.entries(rawVideos).map(([quality,v])=>({
+    quality:String(quality),
+    videoUrl:typeof v==="string"?v:String(v?.videoUrl||v?.url||""),
+    telegramFileId:v?.telegramFileId||v?.fileId||""
+  })).filter(v=>v.videoUrl);
+  if(!videos.length && f.videoUrl) videos.push({quality:String(f.quality||"Default"),videoUrl:String(f.videoUrl),telegramFileId:f.telegramFileId||""});
+  return {id,title:t,year:f.year||"",genre:g.length?g:["Lainnya"],duration:f.duration||"",rating:Number(f.rating)||0,description:f.description||"",videoUrl:videos[0]?.videoUrl||f.videoUrl||"",videos,addedAt:f.addedAt||0,poster,backdrop:f.backdrop||art(t,"#3a3a48","#0f0f16",1280,720)};
+};
 // Firebase Realtime Database (node "movies"), diisi oleh Telegram Bot. Tanpa konfigurasi -> pakai data dummy.
 async function loadFilms(){
   const c = window.FIREBASE_CONFIG;
   if(!window.firebase || !c || /PROJECT/.test(c.databaseURL||"PROJECT")) return films;
-  if(!firebase.apps.length) firebase.initializeApp(c);
+  firebase.initializeApp(c);
   return new Promise(resolve=>{
     let first=true;
     firebase.database().ref("movies").on("value", snap=>{
@@ -84,7 +52,7 @@ const card = (f,opt={}) => `<a class="card ${opt.wide?"wide":""}" href="#/film/$
   ${opt.wide?"":`<span class="rate">${ic("star")}${f.rating}</span>`}
   <div class="hov"><span>${ic("play")}</span></div>
   ${opt.bar?`<div class="bar"><i style="width:${Math.round((progress[f.id]||0)*100)}%"></i></div>`:""}</div>
-  <h3>${esc(f.title)}</h3><p>${opt.status||`${f.year} • ${f.genre[0]}`}</p></a>`;
+  <h3>${esc(f.title)}</h3><p>${f.year} • ${f.genre[0]}</p></a>`;
 const section = (title,body,link) => `<section class="sec"><div class="sec-head"><h2>${title}</h2>${link?`<a href="${link}">Lihat Semua ${ic("chev")}</a>`:""}</div>${body}</section>`;
 const row = (list,opt) => `<div class="row">${list.map(f=>card(f,opt)).join("")}</div>`;
 const grid = list => `<div class="grid">${list.map(f=>card(f)).join("")}</div>`;
@@ -128,17 +96,10 @@ function search(q){
 const resultsHTML = (term,res) => !term ? `${empty("search","Mulai mencari","Ketik judul, genre, atau tahun rilis film.")}<div class="sec"><div class="sec-head"><h2>Telusuri genre</h2></div>${chips("","#/movies")}</div>`
   : res.length ? grid(res) : empty("search","Tidak ada hasil",`Tidak ada film yang cocok dengan “${esc(term)}”. Coba kata kunci lain.`);
 function profile(){
-  const fl = films.filter(f=>favs.includes(f.id));
-  const watched = films.filter(f=>history[f.id]).sort((a,b)=>(history[b.id]?.watchedAt||0)-(history[a.id]?.watchedAt||0));
-  const historyBody = watched.length ? `<div class="row">${watched.map(f=>{
-    const pct=Math.round((progress[f.id]||0)*100);
-    const done=!!history[f.id]?.completed || pct>=97;
-    const status=done ? "Sudah Ditonton" : pct>0 ? `Sedang Ditonton • ${pct}%` : "Sudah Pernah Diputar";
-    return card(f,{wide:1,bar:!done,status});
-  }).join("")}</div>` : empty("clock","Belum ada riwayat","Film yang kamu putar akan muncul di sini.");
-  return `<h1 class="page-title">Koleksi Saya</h1>`
+  const fl = films.filter(f=>favs.includes(f.id)), cont = films.filter(f=>progress[f.id]>0);
+  return `<h1 class="page-title">Profil</h1>`
    + section("Favorit Saya", fl.length?grid(fl):empty("heart","Belum ada favorit","Tekan “Tambah ke Favorit” pada film untuk menyimpannya di sini."))
-   + section("Riwayat Tontonan", historyBody);
+   + section("Riwayat Tontonan", cont.length?row(cont,{wide:1,bar:1}):empty("clock","Belum ada riwayat","Film yang kamu tonton akan muncul di sini."));
 }
 function detail(id){
   const f=byId(id); if(!f) return notFound();
@@ -153,11 +114,19 @@ function detail(id){
   <div class="facts"><div><small>Tahun</small>${f.year}</div><div><small>Durasi</small>${f.duration}</div><div><small>Rating</small>★ ${f.rating}/10</div><div><small>Genre</small>${f.genre[0]}</div></div></div></div>
   ${rel.length?section("Film Serupa",row(rel)):""}</article>`;
 }
+function qualityLabel(q){ return String(q).toLowerCase().endsWith("p")?String(q):String(q); }
+function qualityControls(f){
+  if(!f.videos||f.videos.length<2) return "";
+  return `<div class="quality-box"><div class="quality-title">Kualitas Video</div><div class="quality-list">${f.videos.map((v,i)=>`<button type="button" class="quality-btn ${i===0?"on":""}" data-quality="${esc(v.quality)}">${esc(qualityLabel(v.quality))}</button>`).join("")}</div></div>`;
+}
 function watch(id){
   const f=byId(id); if(!f) return notFound();
   const rel=films.filter(x=>x.id!==id).slice(0,6);
-  return `<div class="watch"><div><div class="player" id="player"><video id="vid" controls playsinline preload="metadata" poster="${f.backdrop}" src="${f.videoUrl}"></video>
-  <div class="err"><div><b>Video tidak dapat diputar</b><br>Periksa koneksi internet atau ganti videoUrl film ini.</div></div></div>
+  const first=f.videos?.[0]?.videoUrl||f.videoUrl||"";
+  return `<div class="watch"><div><div class="player" id="player"><video id="vid" controls playsinline preload="metadata" poster="${f.backdrop}" src="${first}"></video>
+  <button type="button" class="fullscreen-btn" id="fullscreenBtn" aria-label="Layar penuh" title="Layar penuh">⛶</button>
+  <div class="err"><div><b>Video tidak dapat diputar</b><br>Periksa koneksi internet atau pilih kualitas video lain.</div></div></div>
+  ${qualityControls(f)}
   <div class="watch-info"><h1>${esc(f.title)}</h1>${meta(f)}<p class="desc" style="margin-top:14px">${esc(f.description)}</p>
   <div class="actions">${favBtn(f)}<a class="btn ghost" href="#/film/${f.id}">Detail Film</a></div></div></div>
   <aside class="side-list"><h2>Tonton Berikutnya</h2>${rel.map(x=>`<a class="mini" href="#/film/${x.id}"><div class="th"><img loading="lazy" src="${x.backdrop}" alt=""></div><div><h3>${esc(x.title)}</h3><p>${x.year} • ${x.genre[0]}</p></div></a>`).join("")}</aside></div>`;
@@ -185,12 +154,92 @@ function router(){
   if(seg==="search" && matchMedia("(max-width:639px)").matches && !q.get("q")) $("#pageSearch")?.focus();
 }
 function bindPlayer(f){
-  if(!f) return; const v=$("#vid"), p=$("#player"); let last=0;
+  if(!f) return;
+  const v=$("#vid"), p=$("#player"); let last=0;
+  const fsBtn=$("#fullscreenBtn");
+  const updateFullscreenUI=()=>{
+    if(!fsBtn) return;
+    const active=document.fullscreenElement===p || document.webkitFullscreenElement===p;
+    fsBtn.textContent=active?"⛶":"⛶";
+    fsBtn.setAttribute("aria-label",active?"Keluar dari layar penuh":"Layar penuh");
+    fsBtn.title=active?"Keluar dari layar penuh":"Layar penuh";
+  };
+  const isMobilePlayer=()=>/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");
+  const lockLandscape=async()=>{
+    if(!isMobilePlayer()) return;
+    try{
+      if(screen.orientation?.lock) await screen.orientation.lock("landscape");
+    }catch{}
+  };
+  const unlockOrientation=async()=>{
+    if(!isMobilePlayer()) return;
+    try{
+      if(screen.orientation?.unlock) screen.orientation.unlock();
+    }catch{}
+  };
+  const toggleFullscreen=async()=>{
+    try{
+      const active=document.fullscreenElement || document.webkitFullscreenElement;
+      if(active){
+        if(document.exitFullscreen) await document.exitFullscreen();
+        else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+        await unlockOrientation();
+        return;
+      }
+      if(p.requestFullscreen){
+        await p.requestFullscreen();
+        await lockLandscape();
+      }else if(p.webkitRequestFullscreen){
+        p.webkitRequestFullscreen();
+        await lockLandscape();
+      }else if(v.webkitEnterFullscreen){
+        v.webkitEnterFullscreen();
+      }
+    }catch{}
+  };
+  fsBtn?.addEventListener("click",toggleFullscreen);
+  document.addEventListener("fullscreenchange",async()=>{
+    updateFullscreenUI();
+    const active=document.fullscreenElement===p || document.webkitFullscreenElement===p;
+    if(active) await lockLandscape(); else await unlockOrientation();
+  });
+  document.addEventListener("webkitfullscreenchange",async()=>{
+    updateFullscreenUI();
+    const active=document.fullscreenElement===p || document.webkitFullscreenElement===p;
+    if(active) await lockLandscape(); else await unlockOrientation();
+  });
+  updateFullscreenUI();
+  const setSource=(url,quality,autoplay=false)=>{
+    if(!url) return;
+    const oldTime=v.currentTime||0;
+    v.src=url; v.load();
+    v.addEventListener("loadedmetadata",function once(){
+      const saved=progress[`${f.id}:${quality}`]??progress[f.id];
+      if(saved>0&&saved<.97) v.currentTime=saved*v.duration; else if(oldTime>0&&Number.isFinite(oldTime)) v.currentTime=Math.min(oldTime,v.duration||oldTime);
+      if(autoplay) v.play().catch(()=>{});
+    },{once:true});
+  };
   v.addEventListener("error",()=>p.classList.add("fail"));
-  v.addEventListener("loadedmetadata",()=>{ const s=progress[f.id]; if(s>0&&s<.97) v.currentTime=s*v.duration; });
-  v.addEventListener("play",()=>saveHistory(f.id));
-  v.addEventListener("timeupdate",()=>{ if(!v.duration||Date.now()-last<1500) return; last=Date.now(); saveProgress(f.id,v.currentTime/v.duration,v.duration); });
-  v.addEventListener("ended",()=>{ saveHistory(f.id,true); saveProgress(f.id,1,v.duration); });
+  v.addEventListener("loadeddata",()=>p.classList.remove("fail"));
+  const buttons=document.querySelectorAll("[data-quality]");
+  buttons.forEach(btn=>btn.addEventListener("click",()=>{
+    const quality=btn.dataset.quality;
+    const item=f.videos.find(x=>String(x.quality)===String(quality));
+    if(!item?.videoUrl) return;
+    buttons.forEach(b=>b.classList.toggle("on",b===btn));
+    const wasPlaying=!v.paused;
+    const oldTime=v.currentTime||0;
+    setSource(item.videoUrl,quality,wasPlaying);
+    if(oldTime>0) v.addEventListener("loadedmetadata",()=>{if(v.duration) v.currentTime=Math.min(oldTime,v.duration)},{once:true});
+  }));
+  v.addEventListener("timeupdate",()=>{
+    if(!v.duration||Date.now()-last<1500) return;
+    last=Date.now();
+    const active=document.querySelector("[data-quality].on")?.dataset.quality||f.videos?.[0]?.quality||"default";
+    progress[`${f.id}:${active}`]=v.currentTime/v.duration;
+    progress[f.id]=v.currentTime/v.duration;
+    store.set("idflix:progress",progress);
+  });
 }
 function liveSearch(val){
   const on = location.hash.startsWith("#/search");
@@ -204,9 +253,9 @@ function liveSearch(val){
 document.addEventListener("input",e=>{ if(e.target.id==="topSearch"||e.target.id==="pageSearch"){ const v=e.target.value; liveSearch(v); const o=$("#topSearch"),m=$("#pageSearch"); if(o&&o!==e.target)o.value=v; if(m&&m!==e.target)m.value=v; } });
 document.addEventListener("click",e=>{
   const fb=e.target.closest("[data-fav]"), dt=e.target.closest("[data-slide]");
-  if(fb){ const id=fb.dataset.fav; const active=!favs.includes(id); favs=active?[...favs,id]:favs.filter(x=>x!==id); saveFavorite(id,active);
+  if(fb){ const id=fb.dataset.fav; favs=favs.includes(id)?favs.filter(x=>x!==id):[...favs,id]; store.set("idflix:favs",favs);
     const f=byId(id); fb.outerHTML=favBtn(f); return; }
   if(dt) window.__slide(+dt.dataset.slide);
 });
 window.addEventListener("hashchange",router);
-Promise.all([loadFilms(), initUserData()]).then(()=>router());
+loadFilms().then(router);
