@@ -1,6 +1,6 @@
 // Data dummy. Bentuk objek sama dengan dokumen Firestore, jadi nanti cukup ganti
 // FILMS dengan hasil getDocs(collection(db,"movies")) di app.js (fungsi loadFilms).
-const V = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/";
+const V = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 const GENRES = ["Action","Comedy","Drama","Horror","Romance","Thriller","Sci-Fi","Animation","Documentary"];
 
 // Placeholder gambar (SVG). Ganti dengan URL asli / Firebase Storage kapan saja.
@@ -13,7 +13,7 @@ function art(title, c1, c2, w, h) {
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
 }
 const mk = (id,title,year,genre,duration,rating,description,video,c1,c2,progress=0) => ({
-  id, title, year, genre, duration, rating, description, videoUrl: V + video, progress,
+  id, title, year, genre, duration, rating, description, videoUrl: V, progress,
   poster: art(title,c1,c2,400,600), backdrop: art(title,c1,c2,1280,720)
 });
 
