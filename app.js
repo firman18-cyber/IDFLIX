@@ -30,191 +30,19 @@ const normalize = (id,f) => {
   if(!videos.length && f.videoUrl) videos.push({quality:String(f.quality||"Default"),videoUrl:String(f.videoUrl),telegramFileId:f.telegramFileId||""});
   return {id,title:t,year:f.year||"",genre:g.length?g:["Lainnya"],duration:f.duration||"",rating:Number(f.rating)||0,description:f.description||"",videoUrl:videos[0]?.videoUrl||f.videoUrl||"",videos,addedAt:f.addedAt||0,poster,backdrop:f.backdrop||art(t,"#3a3a48","#0f0f16",1280,720)};
 };
-// Firebase Realtime Database (node "movies"), diisi oleh Telegram Bot.
-// Konfigurasi Firebase ini bukan secret; private key/service account tidak pernah diletakkan di frontend.
-const IDFLIX_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyB2OExLs6ri2bmuI30FnAUGCDC8EVLimk",
-  authDomain: "idflix-219d7.firebaseapp.com",
-  databaseURL: "https://idflix-219d7-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "idflix-219d7",
-  storageBucket: "idflix-219d7.firebasestorage.app",
-  messagingSenderId: "576659426224",
-  appId: "1:576659426224:web:a804b3fded2b17f42de475"
-};
-
-function loadScript(src){
-  return new Promise((resolve,reject)=>{
-    const s=document.createElement("script");
-    s.src=src; s.async=true;
-    s.onload=resolve; s.onerror=()=>reject(new Error("Gagal memuat Firebase SDK."));
-    document.head.appendChild(s);
+// Firebase Realtime Database (node "movies"), diisi oleh Telegram Bot. Tanpa konfigurasi -> pakai data dummy.
+async function loadFilms(){
+  const c = window.FIREBASE_CONFIG;
+  if(!window.firebase || !c || /PROJECT/.test(c.databaseURL||"PROJECT")) return films;
+  firebase.initializeApp(c);
+  return new Promise(resolve=>{
+    let first=true;
+    firebase.database().ref("movies").on("value", snap=>{
+      films = Object.entries(snap.val()||{}).map(([id,f])=>normalize(id,f)).sort((a,b)=>b.addedAt-a.addedAt);
+      if(first){ first=false; resolve(films); } else if(!location.hash.startsWith("#/watch")) router();   // update realtime, jangan ganggu player
+    }, ()=>{ if(first){ first=false; resolve(films); } });
   });
 }
-
-async function ensureFirebase(){
-  if(window.firebase?.database) return window.firebase;
-  if(!window.firebase) await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js");
-  if(!window.firebase?.database) await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js");
-  if(!window.firebase?.database) throw new Error("Firebase Database SDK tidak tersedia.");
-  if(!window.firebase.apps?.length) window.firebase.initializeApp(IDFLIX_FIREBASE_CONFIG);
-  return window.firebase;
-}
-
-async function loadFilms(){
-  try{
-    const fb = await ensureFirebase();
-
-    return await new Promise(resolve=>{
-      let first = true;
-
-      fb.database().ref("movies").on("value", snap=>{
-        const firebaseFilms = Object.entries(snap.val() || {})
-          .map(([id, f]) => normalize(id, f || {}))
-          .sort((a, b) =>
-            Number(b.addedAt || 0) - Number(a.addedAt || 0)
-          );
-
-        // Jika Firebase punya minimal 1 film,
-        // semua dummy otomatis dinonaktifkan.
-        films = firebaseFilms.length > 0 ? firebaseFilms : FILMS;
-
-        if(first){
-          first = false;
-          resolve(films);
-        }else if(!location.hash.startsWith("#/watch")){
-          router();
-        }
-
-      }, err=>{
-        console.error("Firebase /movies:", err);
-
-        // Firebase gagal dibaca → dummy tetap menjadi fallback.
-        if(first){
-          first = false;
-          resolve(FILMS);
-        }
-      });
-    });
-
-  }catch(err){
-    console.error("Firebase init:", err);
-
-    // Firebase tidak tersedia → dummy fallback.
-    return FILMS;
-  }
-}
-
-function firebaseDebug(){
-  const output = document.getElementById("firebaseDebugOutput");
-
-  if(!output) return;
-
-  output.textContent = "🟡 Memeriksa Firebase...\n";
-
-  ensureFirebase()
-    .then(fb=>{
-      output.textContent +=
-        "🟢 Firebase SDK: OK\n" +
-        "🟢 Project: " + IDFLIX_FIREBASE_CONFIG.projectId + "\n" +
-        "🟢 Database: " + IDFLIX_FIREBASE_CONFIG.databaseURL + "\n\n" +
-        "🟡 Membaca /movies...\n";
-
-      return new Promise(resolve=>{
-        fb.database().ref("movies").once("value", snap=>{
-          const data = snap.val();
-
-          if(data === null){
-            output.textContent +=
-              "🟡 /movies: KOSONG\n\n" +
-              "Firebase berhasil terhubung,\n" +
-              "tetapi node /movies tidak memiliki data.\n\n" +
-              "📺 Katalog aktif: DUMMY / FALLBACK\n" +
-              "📦 films.length: " + films.length;
-          }else if(typeof data === "object"){
-            const entries = Object.entries(data);
-
-            output.textContent +=
-              "🟢 /movies: TERBACA\n" +
-              "🎬 Jumlah film: " + entries.length + "\n\n";
-
-            entries.slice(0,20).forEach(([id,f],i)=>{
-              output.textContent +=
-                `${i+1}. ${f?.title || "Tanpa Judul"}\n` +
-                `   ID: ${id}\n\n`;
-            });
-
-            output.textContent +=
-              "📺 Katalog aktif: " +
-              (entries.length > 0 ? "FIREBASE" : "DUMMY / FALLBACK") +
-              "\n" +
-              "📦 films.length: " + films.length;
-          }else{
-            output.textContent +=
-              "🔴 Format /movies tidak dikenali.";
-          }
-
-          resolve();
-        },err=>{
-          output.textContent +=
-            "\n🔴 FIREBASE ERROR\n\n" +
-            "Kode: " + (err?.code || "-") + "\n" +
-            "Pesan: " + (err?.message || err) + "\n\n" +
-            "📺 Katalog aktif: DUMMY / FALLBACK";
-
-          resolve();
-        });
-      });
-    })
-    .catch(err=>{
-      output.textContent =
-        "🔴 FIREBASE INIT ERROR\n\n" +
-        "Pesan:\n" +
-        (err?.message || err) +
-        "\n\n" +
-        "📺 Katalog aktif: DUMMY / FALLBACK";
-    });
-}
-
-function debugPage(){
-  return `
-    <h1 class="page-title">Firebase Debug</h1>
-
-    <section class="sec">
-      <pre
-        id="firebaseDebugOutput"
-        style="
-          white-space:pre-wrap;
-          word-break:break-word;
-          background:#111;
-          color:#fff;
-          padding:16px;
-          border-radius:12px;
-          line-height:1.6;
-          font-size:14px;
-          overflow:auto;
-        "
-      >🟡 Menyiapkan pemeriksaan Firebase...</pre>
-
-      <button
-        class="btn primary"
-        type="button"
-        onclick="firebaseDebug()"
-        style="margin-top:12px"
-      >
-        🔄 Cek Lagi
-      </button>
-
-      <a
-        class="btn ghost"
-        href="#/"
-        style="margin-top:12px"
-      >
-        Kembali
-      </a>
-    </section>
-  `;
-}
-
 const byId = id => films.find(f=>f.id===id);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -317,16 +145,8 @@ function renderNav(seg){
 }
 function router(){
   clearInterval(heroTimer);
-  const views={
-  "":home,
-  movies:()=>movies(q),
-  categories,
-  search:()=>search(q),
-  profile,
-  film:()=>detail(arg),
-  watch:()=>watch(arg),
-  debug:debugPage
-};
+  const [path,qs]=location.hash.slice(2).split("?"), q=new URLSearchParams(qs||""), [seg,arg]=path.split("/");
+  const views={"":home,movies:()=>movies(q),categories,search:()=>search(q),profile,film:()=>detail(arg),watch:()=>watch(arg)};
   $("#view").innerHTML = (views[seg]||notFound)();
   renderNav(seg||""); window.scrollTo(0,0);
   const ts=$("#topSearch"); if(seg!=="search") ts.value = ""; else ts.value=q.get("q")||"";
