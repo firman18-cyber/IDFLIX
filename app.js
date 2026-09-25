@@ -103,6 +103,106 @@ async function loadFilms(){
     return FILMS;
   }
 }
+
+async function firebaseDebug(){
+  const rows = [];
+
+  try{
+    rows.push("🟡 Memuat Firebase SDK...");
+
+    const fb = await ensureFirebase();
+
+    rows.push("🟢 Firebase SDK: OK");
+    rows.push("🟢 Project: " + IDFLIX_FIREBASE_CONFIG.projectId);
+    rows.push("🟢 Database: " + IDFLIX_FIREBASE_CONFIG.databaseURL);
+
+    await new Promise((resolve)=>{
+      fb.database().ref("movies").once("value", snap=>{
+        const data = snap.val();
+
+        if(data === null){
+          rows.push("🟡 /movies: KOSONG (null)");
+          rows.push("➡️ Firebase berhasil terhubung, tetapi node movies belum berisi data.");
+        }else if(typeof data === "object"){
+          const entries = Object.entries(data);
+
+          rows.push("🟢 /movies: TERBACA");
+          rows.push("🎬 Jumlah film: " + entries.length);
+
+          entries.slice(0,10).forEach(([id,f],i)=>{
+            rows.push(
+              `${i+1}. ${f?.title || "Tanpa Judul"} | ID: ${id}`
+            );
+          });
+
+          if(entries.length > 10){
+            rows.push("... dan " + (entries.length-10) + " film lainnya");
+          }
+        }else{
+          rows.push("🔴 /movies memiliki format data yang tidak dikenali.");
+        }
+
+        resolve();
+      },err=>{
+        rows.push("🔴 Firebase ERROR");
+        rows.push("Kode: " + (err?.code || "-"));
+        rows.push("Pesan: " + (err?.message || err));
+        resolve();
+      });
+    });
+
+  }catch(err){
+    rows.push("🔴 Firebase INIT ERROR");
+    rows.push("Pesan: " + (err?.message || err));
+  }
+
+  const active =
+    films.length && films !== FILMS
+      ? "FIREBASE"
+      : "DUMMY / FALLBACK";
+
+  rows.push("");
+  rows.push("📺 KATALOG AKTIF: " + active);
+  rows.push("📦 films.length: " + films.length);
+
+  return rows;
+}
+async function debugPage(){
+  const box = await firebaseDebug();
+
+  return `
+    <h1 class="page-title">Firebase Debug</h1>
+
+    <section class="sec">
+      <pre style="
+        white-space:pre-wrap;
+        word-break:break-word;
+        background:#111;
+        color:#fff;
+        padding:16px;
+        border-radius:12px;
+        line-height:1.6;
+        font-size:14px;
+        overflow:auto;
+      ">${esc(box.join("\n"))}</pre>
+
+      <button
+        class="btn primary"
+        type="button"
+        onclick="location.reload()"
+        style="margin-top:12px">
+        🔄 Cek Lagi
+      </button>
+
+      <a
+        class="btn ghost"
+        href="#/"
+        style="margin-top:12px">
+        Kembali
+      </a>
+    </section>
+  `;
+}
 const byId = id => films.find(f=>f.id===id);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -205,8 +305,16 @@ function renderNav(seg){
 }
 function router(){
   clearInterval(heroTimer);
-  const [path,qs]=location.hash.slice(2).split("?"), q=new URLSearchParams(qs||""), [seg,arg]=path.split("/");
-  const views={"":home,movies:()=>movies(q),categories,search:()=>search(q),profile,film:()=>detail(arg),watch:()=>watch(arg)};
+  const views={
+  "":home,
+  movies:()=>movies(q),
+  categories,
+  search:()=>search(q),
+  profile,
+  film:()=>detail(arg),
+  watch:()=>watch(arg),
+  debug:debugPage
+};
   $("#view").innerHTML = (views[seg]||notFound)();
   renderNav(seg||""); window.scrollTo(0,0);
   const ts=$("#topSearch"); if(seg!=="search") ts.value = ""; else ts.value=q.get("q")||"";
