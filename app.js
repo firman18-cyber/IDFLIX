@@ -1397,6 +1397,49 @@ function watch(id){
       ></video>
 
       <div
+        class="player-dim"
+        id="playerDim"
+        aria-hidden="true"
+      ></div>
+
+      <div
+        class="center-controls"
+        id="centerControls"
+      >
+
+        <button
+          type="button"
+          class="center-btn"
+          id="rewindBtn"
+          aria-label="Mundur 10 detik"
+          title="Mundur 10 detik"
+        >
+          ↶ 10
+        </button>
+
+        <button
+          type="button"
+          class="center-btn play-center"
+          id="playBtn"
+          aria-label="Putar"
+          title="Putar"
+        >
+          ▶
+        </button>
+
+        <button
+          type="button"
+          class="center-btn"
+          id="forwardBtn"
+          aria-label="Maju 10 detik"
+          title="Maju 10 detik"
+        >
+          ↷ 10
+        </button>
+
+      </div>
+
+      <div
         class="player-loading"
         id="playerLoading"
         aria-hidden="true"
@@ -1408,16 +1451,6 @@ function watch(id){
         class="player-controls"
         id="playerControls"
       >
-
-        <button
-          type="button"
-          class="player-btn"
-          id="playBtn"
-          aria-label="Putar"
-          title="Putar"
-        >
-          ▶
-        </button>
 
         <input
           class="seek"
@@ -1437,26 +1470,40 @@ function watch(id){
           0:00 / 0:00
         </span>
 
-        <button
-          type="button"
-          class="player-btn"
-          id="muteBtn"
-          aria-label="Bisukan"
-          title="Bisukan"
+        <div
+          class="volume-wrap"
+          id="volumeWrap"
         >
-          🔊
-        </button>
 
-        <input
-          class="volume"
-          id="volumeBar"
-          type="range"
-          min="0"
-          max="1"
-          value="1"
-          step="0.01"
-          aria-label="Volume"
-        >
+          <button
+            type="button"
+            class="player-btn"
+            id="muteBtn"
+            aria-label="Bisukan"
+            title="Bisukan"
+          >
+            🔊
+          </button>
+
+          <div
+            class="volume-popup"
+            id="volumePopup"
+          >
+
+            <input
+              class="volume"
+              id="volumeBar"
+              type="range"
+              min="0"
+              max="1"
+              value="1"
+              step="0.01"
+              aria-label="Volume"
+            >
+
+          </div>
+
+        </div>
 
         <button
           type="button"
@@ -1864,7 +1911,27 @@ function bindPlayer(f){
   const fsBtn =
     $("#fullscreenBtn");
 
+  const dim =
+    $("#playerDim");
+
+  const centerControls =
+    $("#centerControls");
+
+  const rewindBtn =
+    $("#rewindBtn");
+
+  const forwardBtn =
+    $("#forwardBtn");
+
+  const volumeWrap =
+    $("#volumeWrap");
+
+  const controlsBar =
+    $("#playerControls");
+
   let lastSave = 0;
+
+  let hideTimer = null;
 
   let activeQuality =
     f.videos?.[0]?.quality ||
@@ -2040,6 +2107,103 @@ function bindPlayer(f){
           : v.volume;
 
     }
+
+  };
+
+
+  /* -------------------------
+     Visibilitas kontrol
+     (auto-hide + klik area
+     kosong)
+  ------------------------- */
+
+  const closeVolumePopup = () =>
+    volumeWrap?.classList.remove(
+      "open"
+    );
+
+  const clearHideTimer = () => {
+
+    if(hideTimer){
+
+      clearTimeout(hideTimer);
+
+      hideTimer = null;
+
+    }
+
+  };
+
+  const scheduleHide = () => {
+
+    clearHideTimer();
+
+    if(!v.paused){
+
+      hideTimer = setTimeout(
+        () => {
+
+          p.classList.remove(
+            "controls-visible"
+          );
+
+          closeVolumePopup();
+
+        },
+        3000
+      );
+
+    }
+
+  };
+
+  const showControls = () => {
+
+    p.classList.add(
+      "controls-visible"
+    );
+
+    scheduleHide();
+
+  };
+
+  const hideControls = () => {
+
+    p.classList.remove(
+      "controls-visible"
+    );
+
+    closeVolumePopup();
+
+    clearHideTimer();
+
+  };
+
+  /*
+   * Reset timer auto-hide
+   * setiap ada interaksi
+   * dengan kontrol.
+   */
+
+  const keepAlive = () => {
+
+    p.classList.add(
+      "controls-visible"
+    );
+
+    scheduleHide();
+
+  };
+
+  const toggleControls = () => {
+
+    closeVolumePopup();
+
+    p.classList.contains(
+      "controls-visible"
+    )
+      ? hideControls()
+      : showControls();
 
   };
 
@@ -2339,21 +2503,94 @@ function bindPlayer(f){
      Events
   ------------------------- */
 
+  const togglePlay = () =>
+    v.paused
+      ? v.play().catch(()=>{})
+      : v.pause();
+
   playBtn?.addEventListener(
     "click",
-    () =>
-      v.paused
-        ? v.play().catch(()=>{})
-        : v.pause()
+    () => {
+
+      togglePlay();
+
+      keepAlive();
+
+    }
   );
 
 
+  rewindBtn?.addEventListener(
+    "click",
+    () => {
+
+      v.currentTime =
+        Math.max(
+          0,
+          v.currentTime - 10
+        );
+
+      updateTime();
+
+      keepAlive();
+
+    }
+  );
+
+
+  forwardBtn?.addEventListener(
+    "click",
+    () => {
+
+      v.currentTime =
+        Math.min(
+          v.duration ||
+          Infinity,
+
+          v.currentTime + 10
+        );
+
+      updateTime();
+
+      keepAlive();
+
+    }
+  );
+
+
+  /*
+   * Klik area kosong video
+   * (bukan tombol) hanya
+   * toggle tampilan navigasi,
+   * tidak play/pause.
+   */
+
   v.addEventListener(
     "click",
-    () =>
-      v.paused
-        ? v.play().catch(()=>{})
-        : v.pause()
+    toggleControls
+  );
+
+  dim?.addEventListener(
+    "click",
+    toggleControls
+  );
+
+  /*
+   * Klik di dalam kelompok
+   * kontrol tidak dianggap
+   * klik area kosong.
+   */
+
+  centerControls?.addEventListener(
+    "click",
+    e =>
+      e.stopPropagation()
+  );
+
+  controlsBar?.addEventListener(
+    "click",
+    e =>
+      e.stopPropagation()
   );
 
 
@@ -2374,6 +2611,8 @@ function bindPlayer(f){
       }
 
       updateTime();
+
+      keepAlive();
 
     }
   );
@@ -2397,6 +2636,12 @@ function bindPlayer(f){
 
       updateMuteUI();
 
+      volumeWrap?.classList.toggle(
+        "open"
+      );
+
+      keepAlive();
+
     }
   );
 
@@ -2415,24 +2660,48 @@ function bindPlayer(f){
 
       updateMuteUI();
 
+      keepAlive();
+
     }
   );
 
 
   fsBtn?.addEventListener(
     "click",
-    toggleFullscreen
+    () => {
+
+      toggleFullscreen();
+
+      keepAlive();
+
+    }
   );
 
 
   v.addEventListener(
     "play",
-    updatePlayUI
+    () => {
+
+      updatePlayUI();
+
+      scheduleHide();
+
+    }
   );
 
   v.addEventListener(
     "pause",
-    updatePlayUI
+    () => {
+
+      updatePlayUI();
+
+      clearHideTimer();
+
+      p.classList.add(
+        "controls-visible"
+      );
+
+    }
   );
 
 
@@ -2686,6 +2955,17 @@ function bindPlayer(f){
   updateFullscreenUI();
 
   updateTime();
+
+  /*
+   * Video mulai dalam
+   * keadaan paused,
+   * jadi navigasi tampil
+   * dari awal.
+   */
+
+  p.classList.add(
+    "controls-visible"
+  );
 
   loading?.classList.add(
     "on"

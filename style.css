@@ -957,6 +957,7 @@ img{
   border-radius:var(--r);
   overflow:hidden;
   position:relative;
+  cursor:pointer;
 
   --control-bg:
     rgba(12,12,16,.86);
@@ -990,7 +991,99 @@ img{
 }
 
 
-/* Controls */
+/* Dim overlay (tampil saat navigasi terlihat) */
+
+.player-dim{
+  position:absolute;
+  inset:0;
+  z-index:5;
+
+  background:
+    rgba(0,0,0,.28);
+
+  opacity:0;
+  pointer-events:none;
+
+  transition:
+    opacity .2s ease;
+}
+
+.player.controls-visible
+.player-dim{
+  opacity:1;
+}
+
+
+/* Kontrol tengah: mundur / play-pause / maju */
+
+.center-controls{
+  position:absolute;
+  z-index:7;
+
+  inset:0;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:22px;
+
+  opacity:0;
+  pointer-events:none;
+
+  transition:
+    opacity .2s ease;
+}
+
+.player.controls-visible
+.center-controls{
+  opacity:1;
+  pointer-events:auto;
+}
+
+.center-btn{
+  width:46px;
+  height:46px;
+  flex:0 0 46px;
+
+  display:grid;
+  place-items:center;
+
+  border-radius:50%;
+
+  background:
+    rgba(20,20,26,.45);
+
+  backdrop-filter:
+    blur(6px);
+  -webkit-backdrop-filter:
+    blur(6px);
+
+  color:#fff;
+  font-size:13px;
+
+  transition:
+    background .15s ease,
+    transform .15s ease;
+}
+
+.center-btn:hover{
+  background:
+    rgba(20,20,26,.65);
+}
+
+.center-btn:active{
+  transform:scale(.94);
+}
+
+.center-btn.play-center{
+  width:60px;
+  height:60px;
+  flex-basis:60px;
+  font-size:20px;
+}
+
+
+/* Kontrol bawah */
 
 .player-controls{
   position:absolute;
@@ -1019,6 +1112,7 @@ img{
     );
 
   opacity:0;
+  pointer-events:none;
 
   transform:
     translateY(8px);
@@ -1026,13 +1120,10 @@ img{
   transition:.2s;
 }
 
-.player:hover
-.player-controls,
-.player:focus-within
-.player-controls,
-.player.paused
+.player.controls-visible
 .player-controls{
   opacity:1;
+  pointer-events:auto;
   transform:none;
 }
 
@@ -1062,6 +1153,7 @@ img{
   font-size:12px;
   color:#fff;
   white-space:nowrap;
+  flex:0 0 auto;
 
   font-variant-numeric:
     tabular-nums;
@@ -1072,6 +1164,49 @@ img{
   min-width:70px;
   accent-color:var(--red);
   cursor:pointer;
+}
+
+.volume-wrap{
+  position:relative;
+  display:flex;
+  align-items:center;
+}
+
+.volume-popup{
+  position:absolute;
+  right:0;
+  bottom:calc(100% + 10px);
+
+  display:flex;
+  align-items:center;
+
+  padding:8px 10px;
+  border-radius:8px;
+
+  background:
+    var(--control-bg);
+
+  backdrop-filter:
+    blur(6px);
+  -webkit-backdrop-filter:
+    blur(6px);
+
+  opacity:0;
+  transform:
+    translateY(4px);
+
+  pointer-events:none;
+
+  transition:
+    opacity .15s ease,
+    transform .15s ease;
+}
+
+.volume-wrap.open
+.volume-popup{
+  opacity:1;
+  transform:none;
+  pointer-events:auto;
 }
 
 .volume{
@@ -1661,9 +1796,6 @@ img{
   /* Player mobile */
 
   .player-controls{
-    opacity:1;
-    transform:none;
-
     padding:
       8px
       10px
@@ -1683,14 +1815,39 @@ img{
 
   .player-time{
     font-size:11px;
+    max-width:88px;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
 
   .volume{
     width:58px;
   }
 
+  .volume-popup{
+    right:-4px;
+  }
+
   .seek{
     min-width:40px;
+  }
+
+  .center-controls{
+    gap:14px;
+  }
+
+  .center-btn{
+    width:38px;
+    height:38px;
+    flex-basis:38px;
+    font-size:11px;
+  }
+
+  .center-btn.play-center{
+    width:50px;
+    height:50px;
+    flex-basis:50px;
+    font-size:17px;
   }
 
 
