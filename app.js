@@ -26,7 +26,14 @@ const I = {
   pause:'<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>',
   volumeOn:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.3 8.7a5 5 0 010 6.6"/><path d="M19 6a9 9 0 010 12"/>',
   volumeOff:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
-  expand:'<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>'
+  expand:'<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>',
+  replay10:'<path d="M7.5 6.5A7 7 0 1 0 6 17"/><path d="M7.5 3v3.5H4"/><text x="12" y="16" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>',
+  forward10:'<path d="M16.5 6.5A7 7 0 1 1 18 17"/><path d="M16.5 3v3.5H20"/><text x="12" y="16" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>',
+  settings:'<circle cx="12" cy="12" r="3.2"/><path d="M19 13.2a7.4 7.4 0 0 0 0-2.4l1.5-1.1-1.8-3.1-1.8.7a7.6 7.6 0 0 0-2.1-1.2L14.5 4h-5l-.3 2.1A7.6 7.6 0 0 0 7.1 7.3l-1.8-.7-1.8 3.1L5 10.8a7.4 7.4 0 0 0 0 2.4l-1.5 1.1 1.8 3.1 1.8-.7a7.6 7.6 0 0 0 2.1 1.2l.3 2.1h5l.3-2.1a7.6 7.6 0 0 0 2.1-1.2l1.8.7 1.8-3.1z"/>',
+  captions:'<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M7 12h4M13 12h4M7 15h3M14 15h3"/>',
+  chevronDown:'<path d="M7 10l5 5 5-5"/>',
+  close:'<path d="M6 6l12 12M18 6L6 18"/>'
+
 };
 
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -137,7 +144,11 @@ const normalize = (id,f) => {
       telegramFileId:
         v?.telegramFileId ||
         v?.fileId ||
-        ""
+        "",
+
+      subtitle:
+        v?.subtitle ||
+        null
     }))
     .filter(v=>v.videoUrl);
 
@@ -1305,55 +1316,7 @@ function qualityLabel(q){
 
 
 function qualityControls(f){
-
-  if(
-    !f.videos ||
-    f.videos.length < 2
-  )
-    return "";
-
-  return `
-
-<div class="quality-box">
-
-  <div class="quality-title">
-    Kualitas Video
-  </div>
-
-  <div class="quality-list">
-
-    ${
-      f.videos
-        .map(
-          (v,i)=>`
-
-            <button
-              type="button"
-              class="quality-btn ${
-                i===0
-                  ? "on"
-                  : ""
-              }"
-              data-quality="${esc(v.quality)}"
-            >
-              ${esc(
-                qualityLabel(
-                  v.quality
-                )
-              )}
-            </button>
-
-          `
-        )
-        .join("")
-    }
-
-  </div>
-
-</div>
-
-`;
-
+  return "";
 }
 
 
@@ -1406,19 +1369,35 @@ function watch(id){
         aria-hidden="true"
       ></div>
 
+      <div class="player-topbar" id="playerTopbar">
+        <button
+          type="button"
+          class="player-back"
+          id="playerBack"
+          aria-label="Kembali"
+          title="Kembali"
+        >
+          ${ic("back")}
+        </button>
+        <div class="player-brand" aria-label="IDFLIX">
+          <span class="brand-id">ID</span><span class="brand-flix">FLIX</span>
+        </div>
+        <span class="player-top-divider" aria-hidden="true"></span>
+        <div class="player-title">${esc(f.title)}</div>
+      </div>
+
       <div
         class="center-controls"
         id="centerControls"
       >
-
         <button
           type="button"
-          class="center-btn"
+          class="center-btn skip-btn"
           id="rewindBtn"
           aria-label="Mundur 10 detik"
           title="Mundur 10 detik"
         >
-          ↶ 10
+          ${ic("replay10")}
         </button>
 
         <button
@@ -1433,14 +1412,13 @@ function watch(id){
 
         <button
           type="button"
-          class="center-btn"
+          class="center-btn skip-btn"
           id="forwardBtn"
           aria-label="Maju 10 detik"
           title="Maju 10 detik"
         >
-          ↷ 10
+          ${ic("forward10")}
         </button>
-
       </div>
 
       <div
@@ -1455,16 +1433,9 @@ function watch(id){
         class="player-controls"
         id="playerControls"
       >
-
         <div class="seek-wrap">
-
           <span class="seek-track"></span>
-
-          <span
-            class="seek-fill"
-            id="seekFill"
-          ></span>
-
+          <span class="seek-fill" id="seekFill"></span>
           <input
             class="seek"
             id="seekBar"
@@ -1475,61 +1446,77 @@ function watch(id){
             step="1"
             aria-label="Posisi video"
           >
-
         </div>
 
-        <span
-          class="player-time"
-          id="playerTime"
-        >
-          0:00 / 0:00
-        </span>
+        <div class="player-bottom-row">
+          <span class="player-time" id="playerTime">0:00 / 0:00</span>
 
-        <div
-          class="volume-wrap"
-          id="volumeWrap"
-        >
+          <div class="player-actions">
+            <div class="volume-wrap" id="volumeWrap">
+              <button
+                type="button"
+                class="player-btn"
+                id="muteBtn"
+                aria-label="Bisukan"
+                title="Bisukan"
+              >
+                ${ic("volumeOn")}
+              </button>
 
-          <button
-            type="button"
-            class="player-btn"
-            id="muteBtn"
-            aria-label="Bisukan"
-            title="Bisukan"
-          >
-            ${ic("volumeOn")}
-          </button>
+              <div class="volume-popup" id="volumePopup">
+                <input
+                  class="volume"
+                  id="volumeBar"
+                  type="range"
+                  min="0"
+                  max="1"
+                  value="1"
+                  step="0.01"
+                  aria-label="Volume"
+                >
+              </div>
+            </div>
 
-          <div
-            class="volume-popup"
-            id="volumePopup"
-          >
+            <span class="player-divider" aria-hidden="true"></span>
 
-            <input
-              class="volume"
-              id="volumeBar"
-              type="range"
-              min="0"
-              max="1"
-              value="1"
-              step="0.01"
-              aria-label="Volume"
+            <div class="settings-wrap" id="settingsWrap">
+              <button
+                type="button"
+                class="player-btn"
+                id="settingsBtn"
+                aria-label="Pengaturan"
+                title="Pengaturan"
+                aria-expanded="false"
+              >
+                ${ic("settings")}
+              </button>
+
+              <div class="settings-popup" id="settingsPopup" role="dialog" aria-label="Pengaturan video">
+                <div class="settings-heading">Pengaturan</div>
+
+                <div class="settings-section">
+                  <div class="settings-label">Subtitle</div>
+                  <div class="settings-options" id="subtitleOptions"></div>
+                </div>
+
+                <div class="settings-section">
+                  <div class="settings-label">Kualitas</div>
+                  <div class="settings-options" id="qualityOptions"></div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="player-btn"
+              id="fullscreenBtn"
+              aria-label="Layar penuh"
+              title="Layar penuh"
             >
-
+              ${ic("expand")}
+            </button>
           </div>
-
         </div>
-
-        <button
-          type="button"
-          class="player-btn"
-          id="fullscreenBtn"
-          aria-label="Layar penuh"
-          title="Layar penuh"
-        >
-          ${ic("expand")}
-        </button>
-
       </div>
 
       <div class="err">
@@ -1550,7 +1537,6 @@ function watch(id){
 
     </div>
 
-    ${qualityControls(f)}
 
     <div class="watch-info">
 
@@ -1944,6 +1930,24 @@ function bindPlayer(f){
   const volumeWrap =
     $("#volumeWrap");
 
+  const settingsWrap =
+    $("#settingsWrap");
+
+  const settingsBtn =
+    $("#settingsBtn");
+
+  const settingsPopup =
+    $("#settingsPopup");
+
+  const qualityOptions =
+    $("#qualityOptions");
+
+  const subtitleOptions =
+    $("#subtitleOptions");
+
+  const playerBack =
+    $("#playerBack");
+
   const controlsBar =
     $("#playerControls");
 
@@ -1958,6 +1962,8 @@ function bindPlayer(f){
   let activeQuality =
     f.videos?.[0]?.quality ||
     "default";
+
+  let subtitleEnabled = false;
 
 
   /* -------------------------
@@ -2158,6 +2164,11 @@ function bindPlayer(f){
       "open"
     );
 
+  const closeSettingsPopup = () => {
+    settingsWrap?.classList.remove("open");
+    settingsBtn?.setAttribute("aria-expanded", "false");
+  };
+
   const clearHideTimer = () => {
 
     if(hideTimer){
@@ -2184,6 +2195,7 @@ function bindPlayer(f){
           );
 
           closeVolumePopup();
+          closeSettingsPopup();
 
         },
         3000
@@ -2210,6 +2222,7 @@ function bindPlayer(f){
     );
 
     closeVolumePopup();
+    closeSettingsPopup();
 
     clearHideTimer();
 
@@ -2234,6 +2247,7 @@ function bindPlayer(f){
   const toggleControls = () => {
 
     closeVolumePopup();
+    closeSettingsPopup();
 
     p.classList.contains(
       "controls-visible"
@@ -2243,6 +2257,236 @@ function bindPlayer(f){
 
   };
 
+
+  /* -------------------------
+     Settings
+  ------------------------- */
+
+  const getSubtitleMeta = quality => {
+
+    const item =
+      f.videos?.find(
+        x =>
+          String(x.quality) ===
+          String(quality)
+      );
+
+    const raw =
+      item?.subtitle ||
+      null;
+
+    if(!raw)
+      return null;
+
+    if(typeof raw === "string"){
+      return {
+        url:raw,
+        language:"id",
+        label:"Indonesia"
+      };
+    }
+
+    const url =
+      raw.url ||
+      raw.src ||
+      raw.subtitleUrl ||
+      ((raw.fileId || raw.file_id) &&
+        `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(quality))}`) ||
+      "";
+
+    if(!url)
+      return null;
+
+    return {
+      url,
+      language:raw.language || raw.lang || "id",
+      label:raw.label || (String(raw.language || raw.lang || "id").toLowerCase()==="id" ? "Indonesia" : String(raw.language || raw.lang)),
+      format:raw.format || "vtt"
+    };
+  };
+
+  const getCurrentSubtitle = () =>
+    getSubtitleMeta(activeQuality);
+
+  const renderQualityOptions = () => {
+
+    if(!qualityOptions)
+      return;
+
+    const items =
+      Array.isArray(f.videos)
+        ? f.videos.filter(x => x?.videoUrl)
+        : [];
+
+    if(!items.length){
+      qualityOptions.innerHTML =
+        `<div class="settings-empty">Tidak tersedia</div>`;
+      return;
+    }
+
+    qualityOptions.innerHTML =
+      items.map(item => `
+        <button
+          type="button"
+          class="settings-option ${String(item.quality)===String(activeQuality) ? "on" : ""}"
+          data-settings-quality="${esc(item.quality)}"
+        >
+          <span>${esc(qualityLabel(item.quality))}</span>
+          ${String(item.quality)===String(activeQuality) ? ic("check") : ""}
+        </button>
+      `).join("");
+  };
+
+  const renderSubtitleOptions = () => {
+
+    if(!subtitleOptions)
+      return;
+
+    const meta = getCurrentSubtitle();
+
+    subtitleOptions.innerHTML = `
+      <button
+        type="button"
+        class="settings-option subtitle-option ${meta ? "" : "on"}"
+        data-subtitle="off"
+      >
+        <span>Nonaktif</span>
+        ${meta ? "" : ic("check")}
+      </button>
+      ${meta ? `
+        <button
+          type="button"
+          class="settings-option subtitle-option on"
+          data-subtitle="on"
+        >
+          <span>${esc(meta.label || "Indonesia")}</span>
+          ${ic("check")}
+        </button>
+      ` : `
+        <div class="settings-empty">Subtitle tidak tersedia</div>
+      `}
+    `;
+  };
+
+  const removeSubtitleTrack = () => {
+    v.querySelectorAll("track[data-idflix-subtitle]")
+      .forEach(track => track.remove());
+  };
+
+  const applySubtitle = enabled => {
+
+    subtitleEnabled = !!enabled;
+
+    removeSubtitleTrack();
+
+    if(!subtitleEnabled)
+      return;
+
+    const meta = getCurrentSubtitle();
+
+    if(!meta?.url)
+      return;
+
+    const track =
+      document.createElement("track");
+
+    track.kind = "subtitles";
+    track.label = meta.label || "Indonesia";
+    track.srclang = meta.language || "id";
+    track.src = meta.url;
+    track.default = true;
+    track.dataset.idflixSubtitle = "1";
+
+    v.appendChild(track);
+
+    try{
+      [...v.textTracks].forEach(t => {
+        t.mode = "hidden";
+      });
+      const latest = v.textTracks[v.textTracks.length - 1];
+      if(latest)
+        latest.mode = "showing";
+    }catch{}
+  };
+
+  const openSettings = () => {
+    closeVolumePopup();
+    renderQualityOptions();
+    renderSubtitleOptions();
+    settingsWrap?.classList.add("open");
+    settingsBtn?.setAttribute("aria-expanded", "true");
+    keepAlive();
+  };
+
+  const toggleSettings = () => {
+    if(settingsWrap?.classList.contains("open"))
+      closeSettingsPopup();
+    else
+      openSettings();
+  };
+
+  settingsBtn?.addEventListener("click", e => {
+    e.stopPropagation();
+    toggleSettings();
+  });
+
+  settingsPopup?.addEventListener("click", e => {
+    e.stopPropagation();
+
+    const qualityBtn =
+      e.target.closest("[data-settings-quality]");
+
+    if(qualityBtn){
+      const quality =
+        qualityBtn.dataset.settingsQuality;
+
+      const item =
+        f.videos?.find(
+          x => String(x.quality)===String(quality)
+        );
+
+      if(!item?.videoUrl)
+        return;
+
+      const wasPlaying = !v.paused;
+      saveProgress();
+      activeQuality = quality;
+
+      setSource(
+        item.videoUrl,
+        quality,
+        wasPlaying
+      );
+
+      renderQualityOptions();
+      renderSubtitleOptions();
+      applySubtitle(subtitleEnabled && !!getCurrentSubtitle());
+      closeSettingsPopup();
+      keepAlive();
+      return;
+    }
+
+    const subtitleBtn =
+      e.target.closest("[data-subtitle]");
+
+    if(subtitleBtn){
+      const enabled =
+        subtitleBtn.dataset.subtitle === "on";
+
+      applySubtitle(enabled);
+      renderSubtitleOptions();
+      closeSettingsPopup();
+      keepAlive();
+    }
+  });
+
+  playerBack?.addEventListener("click", e => {
+    e.stopPropagation();
+    if(history.length > 1)
+      history.back();
+    else
+      location.hash = "#/";
+  });
 
   /* -------------------------
      Fullscreen
@@ -2709,6 +2953,7 @@ function bindPlayer(f){
 
       updateMuteUI();
 
+      closeSettingsPopup();
       volumeWrap?.classList.toggle(
         "open"
       );
@@ -2973,77 +3218,12 @@ function bindPlayer(f){
 
   /* -------------------------
      Quality
+     Handled by Settings popup.
   ------------------------- */
 
-  document
-    .querySelectorAll(
-      "[data-quality]"
-    )
-    .forEach(
-      btn =>
-        btn.addEventListener(
-          "click",
-          () => {
-
-            const quality =
-              btn.dataset.quality;
-
-            const item =
-              f.videos.find(
-                x =>
-                  String(
-                    x.quality
-                  ) ===
-                  String(
-                    quality
-                  )
-              );
-
-            if(!item?.videoUrl)
-              return;
-
-            const wasPlaying =
-              !v.paused;
-
-            /*
-             * Simpan progress
-             * quality lama.
-             */
-
-            saveProgress();
-
-            activeQuality =
-              quality;
-
-            document
-              .querySelectorAll(
-                "[data-quality]"
-              )
-              .forEach(
-                b =>
-                  b.classList.toggle(
-                    "on",
-                    b===btn
-                  )
-              );
-
-            /*
-             * Ganti source.
-             * Progress quality baru
-             * akan dipulihkan oleh
-             * loadedmetadata.
-             */
-
-            setSource(
-              item.videoUrl,
-              quality,
-              wasPlaying
-            );
-
-          }
-        )
-    );
-
+  renderQualityOptions();
+  renderSubtitleOptions();
+  applySubtitle(!!getCurrentSubtitle());
 
   updatePlayUI();
 
