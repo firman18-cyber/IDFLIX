@@ -1392,32 +1392,12 @@ function watch(id){
       >
         <button
           type="button"
-          class="center-btn skip-btn"
-          id="rewindBtn"
-          aria-label="Mundur 10 detik"
-          title="Mundur 10 detik"
-        >
-          ${ic("replay10")}
-        </button>
-
-        <button
-          type="button"
           class="center-btn play-center"
           id="playBtn"
           aria-label="Putar"
           title="Putar"
         >
           ${ic("play")}
-        </button>
-
-        <button
-          type="button"
-          class="center-btn skip-btn"
-          id="forwardBtn"
-          aria-label="Maju 10 detik"
-          title="Maju 10 detik"
-        >
-          ${ic("forward10")}
         </button>
       </div>
 
@@ -1449,9 +1429,31 @@ function watch(id){
         </div>
 
         <div class="player-bottom-row">
-          <span class="player-time" id="playerTime">0:00 / 0:00</span>
+          <div class="player-left-controls">
+            <button
+              type="button"
+              class="player-btn player-skip-btn"
+              id="rewindBtn"
+              aria-label="Mundur 10 detik"
+              title="Mundur 10 detik"
+            >
+              ${ic("replay10")}
+            </button>
 
-          <div class="player-actions">
+            <button
+              type="button"
+              class="player-btn player-skip-btn"
+              id="forwardBtn"
+              aria-label="Maju 10 detik"
+              title="Maju 10 detik"
+            >
+              ${ic("forward10")}
+            </button>
+
+            <span class="player-time" id="playerTime">0:00 / 0:00</span>
+          </div>
+
+          <div class="player-right-controls">
             <div class="volume-wrap" id="volumeWrap">
               <button
                 type="button"

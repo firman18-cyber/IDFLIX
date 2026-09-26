@@ -2063,33 +2063,32 @@ img{
   }
 
 }
-/* =========================================================
-   PLAYER CONTROLS — CLEAN BOTTOM LAYOUT
-   Patch: control bar stays at the bottom, with a compact
-   center play button and icon-only 10s skip controls.
-========================================================= */
+/* === IDFLIX player control layout patch === */
+.center-controls{
+  z-index:7;
+}
 
-.player-controls{
-  left:0;
-  right:0;
-  bottom:0;
-  gap:2px;
-  padding:8px 12px 10px;
-  background:linear-gradient(
-    to top,
-    rgba(0,0,0,.78) 0%,
-    rgba(0,0,0,.42) 55%,
-    transparent 100%
-  );
+.center-btn.play-center{
+  width:44px;
+  height:44px;
+  flex:0 0 44px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:rgba(12,12,16,.62);
+  color:#fff;
+}
+
+.center-btn.play-center svg{
+  width:20px;
+  height:20px;
 }
 
 .player-bottom-row{
-  width:100%;
-  min-height:32px;
-  height:32px;
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  width:100%;
+  min-height:34px;
   gap:10px;
 }
 
@@ -2097,180 +2096,167 @@ img{
 .player-right-controls{
   display:flex;
   align-items:center;
-  height:32px;
-  gap:3px;
+  gap:4px;
 }
 
 .player-left-controls{
   min-width:0;
+  flex:1 1 auto;
 }
 
 .player-right-controls{
+  flex:0 0 auto;
   margin-left:auto;
 }
 
-/* Skip 10 detik: icon only, no circle/background. */
+/* Backward/Forward: icon only, no circle, no background. */
 .player-skip-btn,
 .player-skip-btn:hover,
-.player-skip-btn:focus-visible{
-  width:30px;
-  height:30px;
-  flex:0 0 30px;
-  padding:0;
-  border:0;
-  border-radius:0;
-  background:transparent;
-  box-shadow:none;
-  backdrop-filter:none;
-  -webkit-backdrop-filter:none;
-}
-
-.player-skip-btn svg{
-  width:21px;
-  height:21px;
-  stroke-width:1.8;
-}
-
+.player-skip-btn:focus,
+.player-skip-btn:focus-visible,
 .player-skip-btn:active{
-  transform:scale(.9);
-  background:transparent;
-}
-
-.player-time{
-  margin-left:5px;
-  font-size:12px;
-  line-height:1;
-  white-space:nowrap;
-}
-
-/* Volume/fullscreen remain compact and aligned on one row. */
-.player-right-controls .player-btn{
   width:32px;
   height:32px;
   flex:0 0 32px;
   padding:0;
+  margin:0;
+  border:0;
+  border-radius:0;
+  outline:none;
+  background:transparent !important;
+  box-shadow:none !important;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  color:#fff;
 }
 
-.player-right-controls .player-btn svg{
-  width:17px;
-  height:17px;
+.player-skip-btn svg{
+  width:23px;
+  height:23px;
+  display:block;
 }
 
-/* Progress is the first line of the bottom control area. */
-.seek-wrap{
-  height:12px;
-  min-height:12px;
-  margin:0 1px;
+.player-skip-btn:active{
+  transform:scale(.9);
 }
 
-.seek-track,
-.seek-fill{
-  height:3px;
-  border-radius:999px;
+.player-time{
+  margin-left:4px;
+  font-size:12px;
+  line-height:1;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
 }
 
-.seek::-webkit-slider-runnable-track{
-  height:3px;
+/* Volume and Settings remain popup controls. */
+.volume-wrap,
+.settings-wrap{
+  position:relative;
+  display:flex;
+  align-items:center;
 }
 
-.seek::-moz-range-track{
-  height:3px;
+.settings-popup{
+  position:absolute;
+  right:0;
+  bottom:calc(100% + 10px);
+  width:min(240px, calc(100vw - 24px));
+  padding:12px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;
+  background:rgba(18,18,22,.96);
+  color:#fff;
+  box-shadow:0 12px 35px rgba(0,0,0,.45);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(5px);
+  pointer-events:none;
+  transition:opacity .15s ease, transform .15s ease, visibility .15s ease;
+  z-index:30;
 }
 
-.seek::-webkit-slider-thumb{
-  width:11px;
-  height:11px;
-  margin-top:-4px;
-  box-shadow:0 0 0 2px rgba(0,0,0,.35);
+.settings-wrap.open .settings-popup{
+  opacity:1;
+  visibility:visible;
+  transform:none;
+  pointer-events:auto;
 }
 
-.seek::-moz-range-thumb{
-  width:11px;
-  height:11px;
-  box-shadow:0 0 0 2px rgba(0,0,0,.35);
+.settings-heading{
+  font-size:14px;
+  font-weight:700;
+  margin-bottom:10px;
 }
 
-/* Center play/pause: smaller, still easy to tap. */
-.center-btn{
-  width:40px;
-  height:40px;
-  flex:0 0 40px;
-  border-radius:50%;
-  background:rgba(12,12,16,.58);
-  backdrop-filter:blur(5px);
-  -webkit-backdrop-filter:blur(5px);
+.settings-section + .settings-section{
+  margin-top:12px;
 }
 
-.center-btn.play-center svg{
-  width:18px;
-  height:18px;
+.settings-label{
+  font-size:11px;
+  color:rgba(255,255,255,.6);
+  margin-bottom:6px;
 }
 
-/* Embedded player: do not manufacture an Android-style black safe-area bar.
-   The Android system navigation area is outside the normal web viewport. */
-.player:not(:fullscreen):not(.-webkit-full-screen) .player-controls{
-  padding-bottom:10px;
+.settings-options{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
 }
 
-/* Fullscreen can use the system safe-area without moving the control row. */
-.player:fullscreen .player-controls,
-.player:-webkit-full-screen .player-controls{
-  padding-bottom:calc(10px + env(safe-area-inset-bottom));
+.settings-option{
+  width:100%;
+  min-height:34px;
+  padding:7px 9px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:#fff;
+  text-align:left;
+  cursor:pointer;
 }
 
-@media (max-width:700px){
-  .player-controls{
-    padding:6px 9px 8px;
-    gap:2px;
+.settings-option:hover,
+.settings-option.on{
+  background:rgba(255,255,255,.1);
+}
+
+.settings-empty{
+  padding:7px 9px;
+  font-size:12px;
+  color:rgba(255,255,255,.55);
+}
+
+@media (max-width:600px){
+  .center-btn.play-center{
+    width:40px;
+    height:40px;
+    flex-basis:40px;
   }
 
-  .player-bottom-row,
-  .player-left-controls,
-  .player-right-controls{
-    height:30px;
+  .center-btn.play-center svg{
+    width:18px;
+    height:18px;
   }
 
-  .player-bottom-row{
-    min-height:30px;
-    gap:6px;
-  }
-
-  .player-skip-btn{
-    width:28px;
-    height:28px;
-    flex-basis:28px;
-  }
-
-  .player-skip-btn svg{
-    width:20px;
-    height:20px;
-  }
-
-  .player-right-controls .player-btn{
+  .player-skip-btn,
+  .player-skip-btn:hover,
+  .player-skip-btn:focus-visible,
+  .player-skip-btn:active{
     width:30px;
     height:30px;
     flex-basis:30px;
   }
 
-  .player-right-controls .player-btn svg{
-    width:16px;
-    height:16px;
+  .player-skip-btn svg{
+    width:21px;
+    height:21px;
   }
 
-  .player-time{
-    margin-left:3px;
-    font-size:11px;
-    max-width:none;
-  }
-
-  .center-btn{
-    width:38px;
-    height:38px;
-    flex-basis:38px;
-  }
-
-  .center-btn.play-center svg{
-    width:17px;
-    height:17px;
+  .settings-popup{
+    right:-4px;
+    width:min(220px, calc(100vw - 20px));
   }
 }
