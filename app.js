@@ -22,7 +22,11 @@ const I = {
   chev:'<path d="M9 6l6 6-6 6"/>',
   back:'<path d="M15 6l-6 6 6 6"/>',
   clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
-  crown:'<path d="M4 8l4 4 4-7 4 7 4-4-2 11H6z"/>'
+  crown:'<path d="M4 8l4 4 4-7 4 7 4-4-2 11H6z"/>',
+  pause:'<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>',
+  volumeOn:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.3 8.7a5 5 0 010 6.6"/><path d="M19 6a9 9 0 010 12"/>',
+  volumeOff:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
+  expand:'<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>'
 };
 
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -1424,7 +1428,7 @@ function watch(id){
           aria-label="Putar"
           title="Putar"
         >
-          ▶
+          ${ic("play")}
         </button>
 
         <button
@@ -1452,16 +1456,27 @@ function watch(id){
         id="playerControls"
       >
 
-        <input
-          class="seek"
-          id="seekBar"
-          type="range"
-          min="0"
-          max="1000"
-          value="0"
-          step="1"
-          aria-label="Posisi video"
-        >
+        <div class="seek-wrap">
+
+          <span class="seek-track"></span>
+
+          <span
+            class="seek-fill"
+            id="seekFill"
+          ></span>
+
+          <input
+            class="seek"
+            id="seekBar"
+            type="range"
+            min="0"
+            max="1000"
+            value="0"
+            step="1"
+            aria-label="Posisi video"
+          >
+
+        </div>
 
         <span
           class="player-time"
@@ -1482,7 +1497,7 @@ function watch(id){
             aria-label="Bisukan"
             title="Bisukan"
           >
-            🔊
+            ${ic("volumeOn")}
           </button>
 
           <div
@@ -1512,7 +1527,7 @@ function watch(id){
           aria-label="Layar penuh"
           title="Layar penuh"
         >
-          ⛶
+          ${ic("expand")}
         </button>
 
       </div>
@@ -1896,6 +1911,9 @@ function bindPlayer(f){
   const seek =
     $("#seekBar");
 
+  const seekFill =
+    $("#seekFill");
+
   const timeEl =
     $("#playerTime");
 
@@ -1932,6 +1950,10 @@ function bindPlayer(f){
   let lastSave = 0;
 
   let hideTimer = null;
+
+  let seekDragging = false;
+
+  let volumeDragging = false;
 
   let activeQuality =
     f.videos?.[0]?.quality ||
@@ -2008,7 +2030,7 @@ function bindPlayer(f){
 
     if(
       seek &&
-      !seek.matches(":active")
+      !seekDragging
     ){
 
       seek.value =
@@ -2017,6 +2039,20 @@ function bindPlayer(f){
               c / d * 1000
             )
           : 0;
+
+    }
+
+    if(seekFill){
+
+      seekFill.style.width =
+        (
+          d
+            ? Math.min(
+                100,
+                c / d * 100
+              )
+            : 0
+        ) + "%";
 
     }
 
@@ -2041,10 +2077,10 @@ function bindPlayer(f){
     if(!playBtn)
       return;
 
-    playBtn.textContent =
+    playBtn.innerHTML =
       v.paused
-        ? "▶"
-        : "❚❚";
+        ? ic("play")
+        : ic("pause");
 
     playBtn.setAttribute(
       "aria-label",
@@ -2079,10 +2115,10 @@ function bindPlayer(f){
       v.muted ||
       v.volume===0;
 
-    muteBtn.textContent =
+    muteBtn.innerHTML =
       muted
-        ? "🔇"
-        : "🔊";
+        ? ic("volumeOff")
+        : ic("volumeOn");
 
     muteBtn.setAttribute(
       "aria-label",
@@ -2098,7 +2134,7 @@ function bindPlayer(f){
 
     if(
       volume &&
-      !volume.matches(":active")
+      !volumeDragging
     ){
 
       volume.value =
@@ -2222,8 +2258,8 @@ function bindPlayer(f){
         document.fullscreenElement===p ||
         document.webkitFullscreenElement===p;
 
-      fsBtn.textContent =
-        "⛶";
+      fsBtn.innerHTML =
+        ic("expand");
 
       fsBtn.setAttribute(
         "aria-label",
@@ -2595,6 +2631,32 @@ function bindPlayer(f){
 
 
   seek?.addEventListener(
+    "pointerdown",
+    () => {
+
+      seekDragging = true;
+
+      keepAlive();
+
+    }
+  );
+
+  [
+    "pointerup",
+    "pointercancel"
+  ].forEach(
+    ev =>
+      seek?.addEventListener(
+        ev,
+        () => {
+
+          seekDragging = false;
+
+        }
+      )
+  );
+
+  seek?.addEventListener(
     "input",
     () => {
 
@@ -2607,6 +2669,17 @@ function bindPlayer(f){
             ) / 1000
           ) *
           v.duration;
+
+      }
+
+      if(seekFill){
+
+        seekFill.style.width =
+          (
+            Number(
+              seek.value
+            ) / 10
+          ) + "%";
 
       }
 
@@ -2645,6 +2718,30 @@ function bindPlayer(f){
     }
   );
 
+
+  volume?.addEventListener(
+    "pointerdown",
+    () => {
+
+      volumeDragging = true;
+
+    }
+  );
+
+  [
+    "pointerup",
+    "pointercancel"
+  ].forEach(
+    ev =>
+      volume?.addEventListener(
+        ev,
+        () => {
+
+          volumeDragging = false;
+
+        }
+      )
+  );
 
   volume?.addEventListener(
     "input",
