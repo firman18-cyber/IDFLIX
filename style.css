@@ -2726,12 +2726,14 @@ img{
   .settings-popup{
     width:190px;
     max-width:calc(100vw - 20px);
-    max-height:calc(100% - 18px);
+    max-height:min(260px, calc(100vh - 24px));
     right:-2px;
+    bottom:calc(100% + 7px);
     padding:6px;
     overflow-y:auto;
     overflow-x:hidden;
     border-radius:9px;
+    z-index:30;
   }
 
   .settings-heading{display:none}
