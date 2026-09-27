@@ -2721,7 +2721,55 @@ img{
   .player-btn svg{width:20px;height:20px}
   .player-skip-btn svg{width:22px;height:22px}
   .quality-badge{height:21px;min-width:42px;padding:0 6px;font-size:10px}
-  .settings-popup{width:176px;right:-2px}
+
+  /* Compact mobile player settings */
+  .settings-popup{
+    width:190px;
+    max-width:calc(100vw - 20px);
+    max-height:calc(100% - 18px);
+    right:-2px;
+    padding:6px;
+    overflow-y:auto;
+    overflow-x:hidden;
+    border-radius:9px;
+  }
+
+  .settings-heading{display:none}
+
+  .settings-section + .settings-section{
+    margin-top:2px;
+    padding-top:2px;
+    border-top:0;
+  }
+
+  .settings-label{
+    padding:4px 6px 2px;
+    font-size:10px;
+    line-height:1.1;
+  }
+
+  .settings-options{
+    flex-direction:row;
+    flex-wrap:wrap;
+    gap:2px;
+  }
+
+  .settings-option{
+    width:auto;
+    min-width:0;
+    min-height:28px;
+    flex:1 1 auto;
+    padding:4px 6px;
+    justify-content:center;
+    gap:4px;
+    border-radius:5px;
+    font-size:11px;
+    line-height:1.1;
+    white-space:nowrap;
+  }
+
+  .settings-option svg{width:12px;height:12px;flex:0 0 12px}
+  .settings-empty{padding:5px 6px;font-size:10px}
 }
 
 @media (prefers-reduced-motion:reduce){

@@ -2433,7 +2433,7 @@ function bindPlayer(f){
 
           btn.classList.toggle("on", active);
           btn.innerHTML = `
-            <span>${btn.dataset.displayMode === "fill" ? "Fill · Penuh" : "Fit · Utuh"}</span>
+            <span>${btn.dataset.displayMode === "fill" ? "Fill" : "Fit"}</span>
             ${active ? ic("check") : ""}
           `;
         });
@@ -2451,7 +2451,7 @@ function bindPlayer(f){
         class="settings-option ${displayMode === "fit" ? "on" : ""}"
         data-display-mode="fit"
       >
-        <span>Fit · Utuh</span>
+        <span>Fit</span>
         ${displayMode === "fit" ? ic("check") : ""}
       </button>
       <button
@@ -2459,7 +2459,7 @@ function bindPlayer(f){
         class="settings-option ${displayMode === "fill" ? "on" : ""}"
         data-display-mode="fill"
       >
-        <span>Fill · Penuh</span>
+        <span>Fill</span>
         ${displayMode === "fill" ? ic("check") : ""}
       </button>
     `;
