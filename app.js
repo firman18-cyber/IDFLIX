@@ -1534,6 +1534,10 @@ function watch(id){
                   <div class="settings-label">Subtitle</div>
                   <div class="settings-options" id="subtitleOptions"></div>
                 </div>
+                <div class="settings-section">
+                  <div class="settings-label">Tampilan</div>
+                  <div class="settings-options" id="displayOptions"></div>
+                </div>
               </div>
             </div>
 
@@ -1976,6 +1980,9 @@ function bindPlayer(f){
   const subtitleOptions =
     $("#subtitleOptions");
 
+  const displayOptions =
+    $("#displayOptions");
+
   const playerBack =
     $("#playerBack");
 
@@ -1995,6 +2002,9 @@ function bindPlayer(f){
     "default";
 
   let subtitleEnabled = false;
+
+  // Default: Fit = video utuh tanpa crop.
+  let displayMode = "fit";
 
 
   /* -------------------------
@@ -2274,6 +2284,20 @@ function bindPlayer(f){
 
   };
 
+  const toggleControls = () => {
+
+    closeVolumePopup();
+    closeSettingsPopup();
+
+    p.classList.contains(
+      "controls-visible"
+    )
+      ? hideControls()
+      : showControls();
+
+  };
+
+
   /* -------------------------
      Settings
   ------------------------- */
@@ -2384,6 +2408,56 @@ function bindPlayer(f){
     `;
   };
 
+  const applyDisplayMode = mode => {
+
+    displayMode = mode === "fill" ? "fill" : "fit";
+
+    p.classList.toggle(
+      "video-fill",
+      displayMode === "fill"
+    );
+
+    if(displayOptions){
+      displayOptions
+        .querySelectorAll("[data-display-mode]")
+        .forEach(btn => {
+          const active =
+            btn.dataset.displayMode === displayMode;
+
+          btn.classList.toggle("on", active);
+          btn.innerHTML = `
+            <span>${btn.dataset.displayMode === "fill" ? "Fill · Penuh" : "Fit · Utuh"}</span>
+            ${active ? ic("check") : ""}
+          `;
+        });
+    }
+  };
+
+  const renderDisplayOptions = () => {
+
+    if(!displayOptions)
+      return;
+
+    displayOptions.innerHTML = `
+      <button
+        type="button"
+        class="settings-option ${displayMode === "fit" ? "on" : ""}"
+        data-display-mode="fit"
+      >
+        <span>Fit · Utuh</span>
+        ${displayMode === "fit" ? ic("check") : ""}
+      </button>
+      <button
+        type="button"
+        class="settings-option ${displayMode === "fill" ? "on" : ""}"
+        data-display-mode="fill"
+      >
+        <span>Fill · Penuh</span>
+        ${displayMode === "fill" ? ic("check") : ""}
+      </button>
+    `;
+  };
+
   const removeSubtitleTrack = () => {
     v.querySelectorAll("track[data-idflix-subtitle]")
       .forEach(track => track.remove());
@@ -2429,6 +2503,7 @@ function bindPlayer(f){
     closeVolumePopup();
     renderQualityOptions();
     renderSubtitleOptions();
+    renderDisplayOptions();
     settingsWrap?.classList.add("open");
     settingsBtn?.setAttribute("aria-expanded", "true");
     keepAlive();
@@ -2492,6 +2567,19 @@ function bindPlayer(f){
 
       applySubtitle(enabled);
       renderSubtitleOptions();
+      closeSettingsPopup();
+      keepAlive();
+      return;
+    }
+
+    const displayBtn =
+      e.target.closest("[data-display-mode]");
+
+    if(displayBtn){
+      applyDisplayMode(
+        displayBtn.dataset.displayMode
+      );
+      renderDisplayOptions();
       closeSettingsPopup();
       keepAlive();
     }
