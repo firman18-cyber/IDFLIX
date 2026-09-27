@@ -27,8 +27,8 @@ const I = {
   volumeOn:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.3 8.7a5 5 0 010 6.6"/><path d="M19 6a9 9 0 010 12"/>',
   volumeOff:'<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
   expand:'<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>',
-  replay10:'<path d="M7.5 6.5A7 7 0 1 0 6 17"/><path d="M7.5 3v3.5H4"/><text x="12" y="16" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>',
-  forward10:'<path d="M16.5 6.5A7 7 0 1 1 18 17"/><path d="M16.5 3v3.5H20"/><text x="12" y="16" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor" stroke="none">10</text>',
+  replay10:'<path d="M20 5l-8 7 8 7z" fill="currentColor"/><path d="M13 5l-8 7 8 7z" fill="currentColor"/>',
+  forward10:'<path d="M4 5l8 7-8 7z" fill="currentColor"/><path d="M11 5l8 7-8 7z" fill="currentColor"/>',
   settings:'<circle cx="12" cy="12" r="3.2"/><path d="M19 13.2a7.4 7.4 0 0 0 0-2.4l1.5-1.1-1.8-3.1-1.8.7a7.6 7.6 0 0 0-2.1-1.2L14.5 4h-5l-.3 2.1A7.6 7.6 0 0 0 7.1 7.3l-1.8-.7-1.8 3.1L5 10.8a7.4 7.4 0 0 0 0 2.4l-1.5 1.1 1.8 3.1 1.8-.7a7.6 7.6 0 0 0 2.1 1.2l.3 2.1h5l.3-2.1a7.6 7.6 0 0 0 2.1-1.2l1.8.7 1.8-3.1z"/>'
 };
 
@@ -2879,38 +2879,27 @@ function bindPlayer(f){
 
 
   /*
-   * Klik area kosong video
-   * (bukan tombol) hanya
-   * toggle tampilan navigasi,
-   * tidak play/pause.
+   * Klik area kosong player -> toggle navigasi.
+   *
+   * Jangan hanya memasang listener pada <video>: pada beberapa browser
+   * event click pada media/overlay bisa ditangani lebih dulu sehingga
+   * navigasi yang sudah fade-out tidak bangun kembali. Kita tangkap di
+   * container player dan abaikan semua elemen interaktif.
    */
-
-  v.addEventListener(
+  p.addEventListener(
     "click",
-    toggleControls
-  );
+    e => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
 
-  dim?.addEventListener(
-    "click",
-    toggleControls
-  );
+      if (target.closest(
+        ".player-controls, .player-topbar, .center-controls, .player-btn, .settings-popup, .volume-popup, input, button, a"
+      )) {
+        return;
+      }
 
-  /*
-   * Klik di dalam kelompok
-   * kontrol tidak dianggap
-   * klik area kosong.
-   */
-
-  centerControls?.addEventListener(
-    "click",
-    e =>
-      e.stopPropagation()
-  );
-
-  controlsBar?.addEventListener(
-    "click",
-    e =>
-      e.stopPropagation()
+      toggleControls();
+    }
   );
 
 
