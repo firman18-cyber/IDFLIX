@@ -2274,20 +2274,6 @@ function bindPlayer(f){
 
   };
 
-  const toggleControls = () => {
-
-    closeVolumePopup();
-    closeSettingsPopup();
-
-    p.classList.contains(
-      "controls-visible"
-    )
-      ? hideControls()
-      : showControls();
-
-  };
-
-
   /* -------------------------
      Settings
   ------------------------- */
@@ -2879,12 +2865,9 @@ function bindPlayer(f){
 
 
   /*
-   * Klik area kosong player -> toggle navigasi.
-   *
-   * Jangan hanya memasang listener pada <video>: pada beberapa browser
-   * event click pada media/overlay bisa ditangani lebih dulu sehingga
-   * navigasi yang sudah fade-out tidak bangun kembali. Kita tangkap di
-   * container player dan abaikan semua elemen interaktif.
+   * Klik/tap area kosong player hanya untuk MEMUNCULKAN navigasi.
+   * Jika navigasi sudah terlihat, klik area kosong tidak melakukan apa-apa.
+   * Tombol dan kontrol interaktif tetap ditangani listener masing-masing.
    */
   p.addEventListener(
     "click",
@@ -2898,7 +2881,9 @@ function bindPlayer(f){
         return;
       }
 
-      toggleControls();
+      if (!p.classList.contains("controls-visible")) {
+        showControls();
+      }
     }
   );
 
