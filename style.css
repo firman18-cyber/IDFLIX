@@ -1460,6 +1460,462 @@ img{
 
 .player.fail .err{display:grid}
 
+
+/* =========================================================
+   RESTORED WEB RESPONSIVE LAYOUT
+   Reinstates the existing tablet/mobile site layout without
+   changing the current custom player implementation.
+========================================================= */
+
+/* =========================================================
+   TABLET
+========================================================= */
+
+@media (max-width:1023px){
+
+  :root{
+    --pad:22px;
+  }
+
+  .app{
+    grid-template-columns:
+      minmax(0,1fr);
+  }
+
+  .sidebar{
+    display:none;
+  }
+
+  .topbar .logo{
+    display:flex;
+  }
+
+  .watch{
+    grid-template-columns:
+      minmax(0,1fr);
+  }
+
+  .detail-body{
+    grid-template-columns:
+      180px
+      1fr;
+
+    gap:24px;
+
+    margin-top:-110px;
+  }
+
+  .detail-info{
+    padding-top:70px;
+  }
+
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width:639px){
+
+  :root{
+    --pad:16px;
+  }
+
+  body{
+    padding-bottom:
+      calc(
+        var(--nav) +
+        env(safe-area-inset-bottom)
+      );
+  }
+
+  .only-mobile{
+    display:grid;
+  }
+
+  .search-box,
+  .topbar .avatar{
+    display:none;
+  }
+
+  .topbar{
+    padding:
+      10px
+      var(--pad);
+
+    padding-top:
+      calc(
+        10px +
+        env(safe-area-inset-top)
+      );
+
+    border:0;
+
+    background:
+      linear-gradient(
+        var(--bg),
+        rgba(10,10,15,.7)
+      );
+  }
+
+  .topbar .logo{
+    margin-right:auto;
+    font-size:24px;
+  }
+
+
+  /* Bottom nav */
+
+  .bottom-nav{
+    display:grid;
+
+    grid-template-columns:
+      repeat(5,1fr);
+
+    position:fixed;
+
+    z-index:30;
+
+    left:0;
+    right:0;
+    bottom:0;
+
+    height:
+      calc(
+        var(--nav) +
+        env(safe-area-inset-bottom)
+      );
+
+    padding-bottom:
+      env(safe-area-inset-bottom);
+
+    background:
+      rgba(14,14,20,.96);
+
+    backdrop-filter:blur(16px);
+
+    border-top:
+      1px solid
+      var(--line);
+  }
+
+  .bottom-nav a{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+
+    gap:3px;
+
+    font-size:11px;
+    color:var(--mute);
+
+    min-height:48px;
+  }
+
+  .bottom-nav a.on{
+    color:var(--red);
+  }
+
+  .bottom-nav svg{
+    width:24px;
+    height:24px;
+  }
+
+
+  /* Hero */
+
+  .hero{
+    height:
+      min(
+        118vw,
+        520px
+      );
+
+    margin-top:-62px;
+  }
+
+  .hero-body{
+    left:var(--pad);
+    right:var(--pad);
+    bottom:44px;
+    max-width:none;
+  }
+
+  .hero::after{
+    background:
+      linear-gradient(
+        0deg,
+        var(--bg) 8%,
+        rgba(10,10,15,.55) 55%,
+        rgba(10,10,15,.25)
+      );
+  }
+
+  .hero p{
+    font-size:14px;
+
+    -webkit-line-clamp:2;
+  }
+
+  .actions{
+    flex-wrap:nowrap;
+  }
+
+  .actions .btn{
+    flex:1;
+    padding:0 12px;
+    height:48px;
+    font-size:14px;
+  }
+
+  .dots{
+    right:auto;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:18px;
+  }
+
+
+  /* Sections */
+
+  .sec{
+    margin-top:26px;
+  }
+
+  .sec-head h2{
+    font-size:18px;
+  }
+
+  .row{
+    gap:12px;
+
+    margin-right:
+      calc(
+        var(--pad) * -1
+      );
+
+    padding-right:
+      var(--pad);
+  }
+
+  .row .card{
+    flex-basis:118px;
+  }
+
+  .row .card.wide{
+    flex-basis:164px;
+  }
+
+  .grid{
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0,1fr)
+      );
+
+    gap:18px 12px;
+  }
+
+  .tiles{
+    grid-template-columns:
+      repeat(2,1fr);
+  }
+
+  .chip{
+    padding:
+      11px
+      18px;
+  }
+
+  .page-title{
+    font-size:22px;
+    padding-top:16px;
+  }
+
+
+  /* Search */
+
+  .m-search{
+    display:flex!important;
+  }
+
+
+  /* Detail */
+
+  .detail-bg{
+    height:64vw;
+    max-height:340px;
+  }
+
+  .detail-body{
+    display:block;
+    margin-top:-56px;
+  }
+
+  .cover{
+    display:none;
+  }
+
+  .detail-info{
+    padding-top:0;
+  }
+
+  .detail-info .actions .btn{
+    flex:1;
+  }
+
+
+  /* Watch */
+
+  .watch{
+    padding:0;
+    gap:0;
+    display:block;
+  }
+
+  .player{
+    border-radius:0;
+
+    position:relative;
+
+    /*
+     * Tetap 16:9,
+     * video di dalamnya contain.
+     */
+    aspect-ratio:16/9;
+  }
+
+  .watch-info{
+    padding:
+      0
+      var(--pad);
+  }
+
+  .side-list{
+    padding:
+      24px
+      var(--pad)
+      0;
+  }
+
+  .mini .th{
+    flex-basis:130px;
+  }
+
+  .back{
+    top:
+      calc(
+        12px +
+        env(safe-area-inset-top)
+      );
+
+    left:12px;
+  }
+
+
+  /* Trailer */
+
+  .trailer{
+    margin-top:20px;
+  }
+
+  .trailer-box{
+    border-radius:10px;
+  }
+
+}
+
+
+/* =========================================================
+   MOBILE SEARCH
+========================================================= */
+
+.m-search{
+  display:none;
+
+  margin:
+    14px
+    var(--pad)
+    0;
+
+  height:46px;
+
+  background:var(--panel2);
+
+  border-radius:12px;
+
+  align-items:center;
+  gap:10px;
+
+  padding:
+    0
+    14px;
+
+  color:var(--mute);
+}
+
+.m-search input{
+  flex:1;
+  min-width:0;
+
+  background:none;
+  border:0;
+  outline:0;
+
+  color:var(--text);
+
+  font:inherit;
+  font-size:16px;
+}
+
+
+
+/* =========================================================
+   MOBILE SEARCH
+========================================================= */
+
+.m-search{
+  display:none;
+
+  margin:
+    14px
+    var(--pad)
+    0;
+
+  height:46px;
+
+  background:var(--panel2);
+
+  border-radius:12px;
+
+  align-items:center;
+  gap:10px;
+
+  padding:
+    0
+    14px;
+
+  color:var(--mute);
+}
+
+.m-search input{
+  flex:1;
+  min-width:0;
+
+  background:none;
+  border:0;
+  outline:0;
+
+  color:var(--text);
+
+  font:inherit;
+  font-size:16px;
+}
+
+
+
 @media (pointer:coarse){
   .volume-popup{display:none !important}
   .player-btn,.player-skip-btn{width:40px;height:40px;flex-basis:40px}
