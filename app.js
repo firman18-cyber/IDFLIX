@@ -1431,6 +1431,7 @@ function watch(id){
         id="vid"
         playsinline
         preload="metadata"
+        crossorigin="anonymous"
         poster="${f.backdrop}"
         src="${first}"
       ></video>
@@ -2494,23 +2495,28 @@ function bindPlayer(f){
     track.default = true;
     track.dataset.idflixSubtitle = "1";
 
+    // Subtitle berasal dari Worker yang berbeda origin.
+    // crossorigin pada <video> wajib agar browser mengizinkan
+    // WebVTT cross-origin dimuat sebagai text track.
+    v.setAttribute("crossorigin", "anonymous");
     v.appendChild(track);
 
-    // Track yang ditambahkan secara dinamis harus langsung diaktifkan.
-    // Beberapa browser mobile tidak konsisten jika mode baru diubah
-    // sebelum elemen <track> selesai terpasang.
+    // Aktifkan TextTrack secara langsung dan ulangi setelah browser
+    // selesai membuat TextTrackList. Ini lebih konsisten di Chrome Android.
     const showTrack = () => {
       try {
-        [...v.textTracks].forEach(t => {
-          t.mode = "hidden";
-        });
-        const latest = v.textTracks[v.textTracks.length - 1];
+        const tracks = [...v.textTracks];
+        tracks.forEach(t => { t.mode = "disabled"; });
+        const latest = track.track || tracks[tracks.length - 1];
         if(latest) latest.mode = "showing";
       } catch {}
     };
 
     showTrack();
     track.addEventListener("load", showTrack, {once:true});
+    setTimeout(showTrack, 50);
+    setTimeout(showTrack, 250);
+    setTimeout(showTrack, 1000);
   };
 
   const openSettings = () => {
