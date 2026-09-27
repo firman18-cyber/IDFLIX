@@ -127,7 +127,11 @@ const normalize = (id,f) => {
   const backdrop =
     (typeof f.backdrop === "string" && f.backdrop.trim())
       ? f.backdrop.trim()
-      : poster;
+      : (
+          backdropFileId
+            ? `${POSTER_WORKER}/backdrop/${encodeURIComponent(backdropFileId)}`
+            : poster
+        );
 
   /*
    * Video:
@@ -1998,7 +2002,8 @@ function bindPlayer(f){
   let volumeDragging = false;
 
   let activeQuality =
-    f.videos?.[0]?.quality ||
+    (Array.isArray(f.videos) && f.videos[0]?.quality) ||
+    f.quality ||
     "default";
 
   let subtitleEnabled = false;
@@ -2305,11 +2310,13 @@ function bindPlayer(f){
   const getSubtitleMeta = quality => {
 
     const item =
-      f.videos?.find(
-        x =>
-          String(x.quality) ===
-          String(quality)
-      );
+      Array.isArray(f.videos)
+        ? f.videos.find(
+            x =>
+              String(x.quality) ===
+              String(quality)
+          )
+        : null;
 
     const raw =
       item?.subtitle ||
@@ -2387,20 +2394,20 @@ function bindPlayer(f){
     subtitleOptions.innerHTML = `
       <button
         type="button"
-        class="settings-option subtitle-option ${meta ? "" : "on"}"
+        class="settings-option subtitle-option ${!subtitleEnabled ? "on" : ""}"
         data-subtitle="off"
       >
         <span>Nonaktif</span>
-        ${meta ? "" : ic("check")}
+        ${!subtitleEnabled ? ic("check") : ""}
       </button>
       ${meta ? `
         <button
           type="button"
-          class="settings-option subtitle-option on"
+          class="settings-option subtitle-option ${subtitleEnabled ? "on" : ""}"
           data-subtitle="on"
         >
           <span>${esc(meta.label || "Indonesia")}</span>
-          ${ic("check")}
+          ${subtitleEnabled ? ic("check") : ""}
         </button>
       ` : `
         <div class="settings-empty">Subtitle tidak tersedia</div>
@@ -2489,14 +2496,21 @@ function bindPlayer(f){
 
     v.appendChild(track);
 
-    try{
-      [...v.textTracks].forEach(t => {
-        t.mode = "hidden";
-      });
-      const latest = v.textTracks[v.textTracks.length - 1];
-      if(latest)
-        latest.mode = "showing";
-    }catch{}
+    // Track yang ditambahkan secara dinamis harus langsung diaktifkan.
+    // Beberapa browser mobile tidak konsisten jika mode baru diubah
+    // sebelum elemen <track> selesai terpasang.
+    const showTrack = () => {
+      try {
+        [...v.textTracks].forEach(t => {
+          t.mode = "hidden";
+        });
+        const latest = v.textTracks[v.textTracks.length - 1];
+        if(latest) latest.mode = "showing";
+      } catch {}
+    };
+
+    showTrack();
+    track.addEventListener("load", showTrack, {once:true});
   };
 
   const openSettings = () => {
@@ -2532,9 +2546,11 @@ function bindPlayer(f){
         qualityBtn.dataset.settingsQuality;
 
       const item =
-        f.videos?.find(
-          x => String(x.quality)===String(quality)
-        );
+        Array.isArray(f.videos)
+          ? f.videos.find(
+              x => String(x.quality)===String(quality)
+            )
+          : null;
 
       if(!item?.videoUrl)
         return;
@@ -2551,8 +2567,12 @@ function bindPlayer(f){
       );
 
       renderQualityOptions();
-      renderSubtitleOptions();
-      applySubtitle(subtitleEnabled && !!getCurrentSubtitle());
+      removeSubtitleTrack();
+      if(subtitleEnabled && getCurrentSubtitle()) {
+        applySubtitle(true);
+      } else {
+        renderSubtitleOptions();
+      }
       closeSettingsPopup();
       keepAlive();
       return;
@@ -2862,6 +2882,10 @@ function bindPlayer(f){
           loading?.classList.remove(
             "on"
           );
+
+          if(subtitleEnabled && getCurrentSubtitle()) {
+            applySubtitle(true);
+          }
 
           if(autoplay){
 
@@ -3323,9 +3347,11 @@ function bindPlayer(f){
      Handled by Settings popup.
   ------------------------- */
 
+  // Subtitle default-nya nonaktif. User memilih sendiri dari Settings.
+  subtitleEnabled = false;
   renderQualityOptions();
   renderSubtitleOptions();
-  applySubtitle(!!getCurrentSubtitle());
+  removeSubtitleTrack();
 
   if(qualityBadge) qualityBadge.textContent = qualityLabel(activeQuality);
   p.classList.add("controls-visible");
