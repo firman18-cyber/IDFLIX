@@ -2288,19 +2288,6 @@ function bindPlayer(f){
   };
 
 
-  /*
-   * Area video tetap harus bisa membangunkan navigasi.
-   * Saat overlay navigasi sedang tersembunyi, center-controls memang
-   * memenuhi player tetapi pointer-events-nya hanya aktif pada tombol play.
-   * Karena itu tangkap klik langsung dari <video> agar tap/click di area
-   * kosong video selalu menampilkan kembali navigasi.
-   */
-  v.addEventListener("click", e => {
-    e.stopPropagation();
-    toggleControls();
-  });
-
-
   /* -------------------------
      Settings
   ------------------------- */
