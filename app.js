@@ -71,6 +71,31 @@ let heroTimer;
 const POSTER_WORKER =
   "https://idflix-bot1.firman-uke29.workers.dev";
 
+/*
+ * Backend streaming dapat diganti tanpa mengedit data film di Firebase.
+ * Atur window.IDFLIX_TELEPLAY_BASE_URL di index.html.
+ * Kosong = gunakan URL yang sudah tersimpan di Firebase (fallback lama).
+ */
+const TELEPLAY_BASE_URL = String(window.IDFLIX_TELEPLAY_BASE_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+
+function resolveTeleplayUrl(rawUrl) {
+  const raw = String(rawUrl || "").trim();
+  if (!raw || !TELEPLAY_BASE_URL) return raw;
+  try {
+    const parsed = new URL(raw, window.location.href);
+    const match = /^\/stream\/(\d+)\/?$/.exec(parsed.pathname);
+    if (!match) return raw;
+    const target = new URL(`${TELEPLAY_BASE_URL}/stream/${match[1]}`);
+    const token = parsed.searchParams.get("token");
+    if (token) target.searchParams.set("token", token);
+    return target.toString();
+  } catch {
+    return raw;
+  }
+}
+
 /* =========================================================
    DATA
 ========================================================= */
@@ -154,14 +179,11 @@ const normalize = (id,f) => {
     .map(([quality,v])=>({
       quality:String(quality),
 
-      videoUrl:
+      videoUrl: resolveTeleplayUrl(
         typeof v === "string"
           ? v
-          : String(
-              v?.videoUrl ||
-              v?.url ||
-              ""
-            ),
+          : String(v?.videoUrl || v?.url || "")
+      ),
 
       telegramFileId:
         v?.telegramFileId ||
@@ -186,9 +208,7 @@ const normalize = (id,f) => {
         "Default"
       ),
 
-      videoUrl:String(
-        f.videoUrl
-      ),
+      videoUrl:resolveTeleplayUrl(f.videoUrl),
 
       telegramFileId:
         f.telegramFileId ||
@@ -221,7 +241,7 @@ const normalize = (id,f) => {
 
     videoUrl:
       videos[0]?.videoUrl ||
-      f.videoUrl ||
+      resolveTeleplayUrl(f.videoUrl) ||
       "",
 
     videos,
