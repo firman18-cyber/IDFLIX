@@ -72,28 +72,41 @@ const POSTER_WORKER =
   "https://idflix-bot1.firman-uke29.workers.dev";
 
 /*
- * Backend streaming dapat diganti tanpa mengedit data film di Firebase.
- * Atur window.IDFLIX_TELEPLAY_BASE_URL di index.html.
- * Kosong = gunakan URL yang sudah tersimpan di Firebase (fallback lama).
+ * Endpoint streaming Telegram dipisahkan dari URL poster.
+ * Ubah satu konfigurasi ini jika domain backend streaming berubah.
+ * URL eksternal dan URL streaming absolut yang lama tetap dipertahankan.
  */
-const TELEPLAY_BASE_URL = String(window.IDFLIX_TELEPLAY_BASE_URL || "")
-  .trim()
-  .replace(/\/+$/, "");
+const STREAM_BASE_URL = String(
+  window.IDFLIX_STREAM_BASE_URL ||
+  "https://idflix-teleplay-nodejs.dockhosting.dev"
+).trim().replace(/\/+$/, "");
 
-function resolveTeleplayUrl(rawUrl) {
+function resolveVideoUrl(rawUrl){
   const raw = String(rawUrl || "").trim();
-  if (!raw || !TELEPLAY_BASE_URL) return raw;
-  try {
-    const parsed = new URL(raw, window.location.href);
-    const match = /^\/stream\/(\d+)\/?$/.exec(parsed.pathname);
-    if (!match) return raw;
-    const target = new URL(`${TELEPLAY_BASE_URL}/stream/${match[1]}`);
-    const token = parsed.searchParams.get("token");
-    if (token) target.searchParams.set("token", token);
-    return target.toString();
-  } catch {
+  if(!raw) return "";
+
+  // URL eksternal atau URL absolut lama tidak diubah.
+  if(/^https?:\/\//i.test(raw) || /^blob:/i.test(raw) || /^data:/i.test(raw)){
     return raw;
   }
+
+  // Format path eksplisit: /stream/819?token=... atau stream/819?token=...
+  if(/^\/?stream\//i.test(raw)){
+    return `${STREAM_BASE_URL}/${raw.replace(/^\/+/, "")}`;
+  }
+
+  // Format relatif yang disepakati: 819?token=...
+  // ID hanya diterima sebagai satu segmen path; query dipertahankan.
+  const match = raw.match(/^([^/?#]+)(\?[^#]*)?(#.*)?$/);
+  if(match){
+    const id = match[1];
+    const query = match[2] || "";
+    const hash = match[3] || "";
+    return `${STREAM_BASE_URL}/stream/${encodeURIComponent(id)}${query}${hash}`;
+  }
+
+  // Fallback untuk path relatif yang tidak dikenal.
+  return raw;
 }
 
 /* =========================================================
@@ -179,10 +192,14 @@ const normalize = (id,f) => {
     .map(([quality,v])=>({
       quality:String(quality),
 
-      videoUrl: resolveTeleplayUrl(
+      videoUrl: resolveVideoUrl(
         typeof v === "string"
           ? v
-          : String(v?.videoUrl || v?.url || "")
+          : String(
+              v?.videoUrl ||
+              v?.url ||
+              ""
+            )
       ),
 
       telegramFileId:
@@ -208,7 +225,9 @@ const normalize = (id,f) => {
         "Default"
       ),
 
-      videoUrl:resolveTeleplayUrl(f.videoUrl),
+      videoUrl:resolveVideoUrl(
+        f.videoUrl
+      ),
 
       telegramFileId:
         f.telegramFileId ||
@@ -241,7 +260,7 @@ const normalize = (id,f) => {
 
     videoUrl:
       videos[0]?.videoUrl ||
-      resolveTeleplayUrl(f.videoUrl) ||
+      resolveVideoUrl(f.videoUrl) ||
       "",
 
     videos,
