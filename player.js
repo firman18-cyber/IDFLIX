@@ -109,6 +109,7 @@ function bindPlayer(f) {
   const closePopups = () => {
     volumeWrap?.classList.remove("open");
     settingsWrap?.classList.remove("open");
+    p.classList.remove("settings-open");
     settingsBtn?.setAttribute("aria-expanded", "false");
   };
   const clearHide = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } };
@@ -403,6 +404,7 @@ function bindPlayer(f) {
     const room = p.clientHeight - (bar ? bar.offsetHeight : 90) - 24;
     if (settingsPopup) settingsPopup.style.maxHeight = Math.max(150, Math.min(420, room)) + "px";
     settingsWrap?.classList.add("open");
+    p.classList.add("settings-open");
     settingsBtn?.setAttribute("aria-expanded", "true");
     p.classList.add("controls-visible");
     clearHide();

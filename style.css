@@ -2986,3 +2986,21 @@ img{
 .search-genres .chip.on{background:var(--panel2);border-color:var(--line)}
 .search-genres + .page-title{padding-top:20px}
 .m-search input::-webkit-search-cancel-button,#topSearch::-webkit-search-cancel-button{filter:grayscale(1) brightness(1.8)}
+
+
+/* Fix: saat menu pengaturan terbuka, timeline di belakang tidak menerima sentuhan. */
+.player.settings-open .seek-wrap,
+.player.settings-open .seek,
+.player.settings-open .seek-tip {
+  pointer-events: none !important;
+}
+.player .settings-popup {
+  z-index: 80;
+  touch-action: pan-y;
+}
+.player.settings-open .settings-wrap {
+  z-index: 81;
+}
+.player.settings-open .settings-popup {
+  overscroll-behavior: contain;
+}
