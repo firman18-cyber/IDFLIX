@@ -30,6 +30,8 @@ const I = {
   replay10:'<path d="M20 5l-8 7 8 7z" fill="currentColor"/><path d="M13 5l-8 7 8 7z" fill="currentColor"/>',
   forward10:'<path d="M4 5l8 7-8 7z" fill="currentColor"/><path d="M11 5l8 7-8 7z" fill="currentColor"/>',
   settings:'<circle cx="12" cy="12" r="3.2"/><path d="M19 13.2a7.4 7.4 0 0 0 0-2.4l1.5-1.1-1.8-3.1-1.8.7a7.6 7.6 0 0 0-2.1-1.2L14.5 4h-5l-.3 2.1A7.6 7.6 0 0 0 7.1 7.3l-1.8-.7-1.8 3.1L5 10.8a7.4 7.4 0 0 0 0 2.4l-1.5 1.1 1.8 3.1 1.8-.7a7.6 7.6 0 0 0 2.1 1.2l.3 2.1h5l.3-2.1a7.6 7.6 0 0 0 2.1-1.2l1.8.7 1.8-3.1z"/>'
+  ,cc:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.4 10.2a2.4 2.4 0 1 0 0 3.6M17.4 10.2a2.4 2.4 0 1 0 0 3.6"/>',
+  pip:'<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor"/>'
 };
 
 const ic = n => `<svg viewBox="0 0 24 24">${I[n]}</svg>`;
@@ -52,19 +54,87 @@ const store = {
 
 let films = FILMS;
 
-let favs = store.get(
-  "idflix:favs",
-  []
-);
+let favs = store.get("idflix:favs", []);
+let favTimes = store.get("idflix:favts", {});
 
-let progress = store.get(
-  "idflix:progress",
-  Object.fromEntries(
-    FILMS
-      .filter(f=>f.progress)
-      .map(f=>[f.id,f.progress])
-  )
-);
+/* Progres tonton (PRD 5): {t, d, q, updatedAt} per film.
+   `progress` = fraksi turunan (t/d) untuk bar kartu dan rail Lanjutkan. */
+let progressMeta = store.get("idflix:progress2", {});
+let progress = {};
+
+const rebuildProgress = () => {
+  progress = {};
+  Object.entries(progressMeta).forEach(([id, m]) => {
+    if (m && m.d > 0) progress[id] = Math.max(0, Math.min(1, m.t / m.d));
+  });
+};
+rebuildProgress();
+
+function saveProgressMeta(id, t, d, q){
+  if(!(d > 0) || !(t >= 0)) return;
+  // Abaikan posisi awal (<5 dtk) agar tidak menimpa progres lama saat film hanya dibuka sebentar.
+  if(t < 5 && d - t > 5) return;
+  const meta = { t: Math.round(t), d: Math.round(d), q: String(q || ""), updatedAt: Date.now() };
+  progressMeta[id] = meta;
+  rebuildProgress();
+  store.set("idflix:progress2", progressMeta);
+  window.IDFLIX_SYNC && IDFLIX_SYNC.saveProgress(id, meta);
+}
+
+/* Film dianggap "ditonton" setelah diputar >= 60 detik. */
+function markWatched(id){
+  const w = store.get("idflix:watched", []);
+  if(!w.includes(id)){
+    w.push(id);
+    store.set("idflix:watched", w);
+  }
+}
+
+/* Film berikutnya: utamakan yang segenre dan belum selesai. */
+function nextFilmFor(f){
+  const others = films.filter(x => x.id !== f.id);
+  const unfinished = x => !(progress[x.id] >= .99);
+  const sameGenre = others.filter(x => unfinished(x) && x.genre.some(g => f.genre.includes(g)));
+  return sameGenre[0] || others.find(unfinished) || others[0] || null;
+}
+
+/* Gabungkan data lokal dengan akun anonim (UID yang sama dipakai ulang tiap kunjungan). */
+async function syncAccount(){
+  const S = window.IDFLIX_SYNC;
+  if(!S) return;
+  await S.ready;
+  if(!S.state.uid) return;
+  const cloud = await S.pull();
+  const cf = cloud.favorites || {}, cp = cloud.progress || {};
+  const pushFav = {}, pushProg = {};
+
+  Object.entries(cf).forEach(([id, ts]) => {
+    if(!favs.includes(id)) favs.push(id);
+    favTimes[id] = favTimes[id] || ts;
+  });
+  favs.forEach(id => {
+    favTimes[id] = favTimes[id] || Date.now();
+    if(!(id in cf)) pushFav[id] = favTimes[id];
+  });
+
+  Object.entries(cp).forEach(([id, m]) => {
+    const local = progressMeta[id];
+    if(!local || (m.updatedAt || 0) > (local.updatedAt || 0)) progressMeta[id] = m;
+  });
+  Object.entries(progressMeta).forEach(([id, m]) => {
+    const c = cp[id];
+    if(!c || (m.updatedAt || 0) > (c.updatedAt || 0)) pushProg[id] = m;
+  });
+
+  store.set("idflix:favs", favs);
+  store.set("idflix:favts", favTimes);
+  store.set("idflix:progress2", progressMeta);
+  rebuildProgress();
+  S.pushAll(pushFav, pushProg);
+
+  const h = location.hash;
+  if(!h.startsWith("#/watch") && (h === "" || h === "#/" || h.startsWith("#/profile"))) router();
+}
 
 let heroTimer;
 
@@ -80,6 +150,12 @@ const STREAM_BASE_URL = String(
   window.IDFLIX_STREAM_BASE_URL ||
   "https://idflix-teleplay-nodejs.dockhosting.dev"
 ).trim().replace(/\/+$/, "");
+
+const QUALITY_ORDER = ["360p","480p","720p","1080p","1440p","2160p"];
+const qualityRank = q => {
+  const i = QUALITY_ORDER.indexOf(String(q).toLowerCase());
+  return i < 0 ? 99 : i;
+};
 
 function resolveVideoUrl(rawUrl){
   const raw = String(rawUrl || "").trim();
@@ -207,11 +283,16 @@ const normalize = (id,f) => {
         v?.fileId ||
         "",
 
+      format: String(v?.format || ""),
+
+      provider: String(v?.provider || ""),
+
       subtitle:
         v?.subtitle ||
         null
     }))
-    .filter(v=>v.videoUrl);
+    .filter(v=>v.videoUrl)
+    .sort((a,b)=>qualityRank(a.quality)-qualityRank(b.quality));
 
   /*
    * Kompatibilitas data lama
@@ -314,7 +395,8 @@ async function loadFilms(){
     return films;
   }
 
-  firebase.initializeApp(c);
+  if(window.IDFLIX_SYNC) IDFLIX_SYNC.initApp();
+  else if(!firebase.apps.length) firebase.initializeApp(c);
 
   return new Promise(resolve=>{
 
@@ -661,6 +743,34 @@ const tileColors = [
 ];
 
 
+/* Banner halus "Simpan progresmu" setelah 3 film ditonton (PRD 4). */
+function saveBanner(){
+  const watched = store.get("idflix:watched", []).length;
+  const hiddenAt = store.get("idflix:bannerHide", 0);
+  if(watched < 3 || Date.now() - hiddenAt < 7 * 864e5) return "";
+  return `
+<div class="save-banner" role="note">
+  <div>
+    <b>Simpan progresmu</b>
+    <span>Kamu masuk sebagai Tamu. Favorit dan riwayat tontonan bisa hilang jika data browser dihapus atau kamu pindah perangkat. Fitur simpan ke akun segera hadir.</span>
+  </div>
+  <button type="button" class="banner-close" data-dismiss-banner aria-label="Tutup">Nanti</button>
+</div>`;
+}
+
+/* Skeleton saat film dimuat (F-02). */
+function skeleton(){
+  const cards = n => Array.from({length:n},()=>`<div class="sk-card"><div class="sk sk-poster"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div></div>`).join("");
+  return `
+<div class="skeleton-page" aria-busy="true" aria-label="Memuat">
+  <div class="sk sk-hero"></div>
+  <div class="sk sk-title"></div>
+  <div class="sk-row">${cards(7)}</div>
+  <div class="sk sk-title"></div>
+  <div class="sk-row">${cards(7)}</div>
+</div>`;
+}
+
 /* =========================================================
    HOME
 ========================================================= */
@@ -731,6 +841,10 @@ function home(){
   return (
 
     heroHTML
+
+    +
+
+    saveBanner()
 
     +
 
@@ -805,7 +919,17 @@ function home(){
       "#/movies"
     )
 
-  );
+  
+    +
+    GENRES
+      .map(g => [g, films.filter(f => f.genre.includes(g))])
+      .filter(([, list]) => list.length >= 2)
+      .slice(0, 5)
+      .map(([g, list]) =>
+        section(g, row(list), "#/movies?g=" + encodeURIComponent(g))
+      )
+      .join("")
+);
 
 }
 
@@ -1053,15 +1177,12 @@ function search(q){
 
 </label>
 
-<h1 class="page-title">
+<div class="sec search-genres">
+  <div class="sec-head"><h2>Genre</h2></div>
+  ${chips("","#/movies")}
+</div>
 
-  ${
-    term
-      ? `Hasil untuk “${esc(q.get("q"))}”`
-      : "Cari Film"
-  }
-
-</h1>
+<h1 class="page-title">${term ? `Hasil untuk “${esc(q.get("q"))}”` : ""}</h1>
 
 <section
   class="sec"
@@ -1083,28 +1204,7 @@ const resultsHTML = (
 ) =>
 
   !term
-
-    ? `
-
-      ${empty(
-        "search",
-        "Mulai mencari",
-        "Ketik judul, genre, atau tahun rilis film."
-      )}
-
-      <div class="sec">
-
-        <div class="sec-head">
-          <h2>
-            Telusuri genre
-          </h2>
-        </div>
-
-        ${chips("","#/movies")}
-
-      </div>
-
-    `
+    ? `<p class="search-hint">${ic("search")}<span>Ketik judul, genre, atau tahun rilis film.</span></p>`
 
     : res.length
 
@@ -1140,6 +1240,15 @@ function profile(){
 <h1 class="page-title">
   Profil
 </h1>
+
+<div class="profile-head">
+  <div class="profile-avatar">${ic("user")}</div>
+  <div>
+    <b>Pengguna <span class="guest-pill">Tamu</span></b>
+    <p>Favorit dan riwayat tersimpan di akun anonim perangkat ini. Data bisa hilang jika data browser dihapus atau kamu pindah perangkat.</p>
+  </div>
+</div>
+
 
 ${section(
   "Favorit Saya",
@@ -1180,6 +1289,12 @@ ${section(
 /* =========================================================
    DETAIL
 ========================================================= */
+
+const hasResume = f => progress[f.id] > .01 && progress[f.id] < .99;
+const resumeLabel = f => hasResume(f) ? "Lanjutkan" : "Tonton Sekarang";
+const resumeBar = f => hasResume(f)
+  ? `<div class="resume-bar" aria-label="Sudah ditonton ${Math.round(progress[f.id]*100)}%"><i style="width:${Math.round(progress[f.id]*100)}%"></i></div>`
+  : "";
 
 function detail(id){
 
@@ -1272,12 +1387,11 @@ function detail(id){
           href="#/watch/${f.id}"
         >
           ${ic("play")}
-          Tonton
+          ${resumeLabel(f)}
         </a>
-
         ${favBtn(f)}
-
       </div>
+      ${resumeBar(f)}
 
       ${
         f.trailerUrl
@@ -1442,18 +1556,7 @@ function watch(id){
   if(!f)
     return notFound();
 
-  const rel =
-    films
-      .filter(
-        x =>
-          x.id!==id
-      )
-      .slice(0,6);
-
-  const first =
-    f.videos?.[0]?.videoUrl ||
-    f.videoUrl ||
-    "";
+  const rel = films.filter(x => x.id!==id).slice(0,6);
 
   return `
 
@@ -1461,240 +1564,109 @@ function watch(id){
 
   <div>
 
-    <div
-      class="player"
-      id="player"
-    >
+    <div class="player" id="player">
 
-      <video
-        id="vid"
-        playsinline
-        preload="metadata"
-        poster="${f.backdrop}"
-        src="${first}"
-      ></video>
+      <video id="vid" playsinline preload="metadata" poster="${esc(f.backdrop)}"></video>
 
-      <div
-        class="player-dim"
-        id="playerDim"
-        aria-hidden="true"
-      ></div>
+      <div class="player-dim" id="playerDim" aria-hidden="true"></div>
+
+      <div class="sub-overlay" id="subOverlay" data-size="m" data-bg="semi" aria-hidden="true"></div>
+
+      <div class="skip-hint left" id="skipL" aria-hidden="true">${ic("replay10")}<span>10 dtk</span></div>
+      <div class="skip-hint right" id="skipR" aria-hidden="true"><span>10 dtk</span>${ic("forward10")}</div>
+      <div class="player-toast" id="playerToast" role="status" aria-live="polite"></div>
 
       <div class="player-topbar" id="playerTopbar">
-        <button
-          type="button"
-          class="player-back"
-          id="playerBack"
-          aria-label="Kembali"
-          title="Kembali"
-        >
-          ${ic("back")}
-        </button>
+        <button type="button" class="player-back" id="playerBack" aria-label="Kembali" title="Kembali">${ic("back")}</button>
         <div class="player-titleblock">
           <div class="player-title">${esc(f.title)}</div>
           <div class="player-episode">${esc(f.episodeInfo || (f.year ? `Film · ${f.year}` : "Film"))}</div>
         </div>
       </div>
 
-      <div
-        class="center-controls"
-        id="centerControls"
-      >
-        <button
-          type="button"
-          class="center-btn play-center"
-          id="playBtn"
-          aria-label="Putar"
-          title="Putar"
-        >
-          ${ic("play")}
-        </button>
+      <div class="center-controls" id="centerControls">
+        <button type="button" class="center-btn play-center" id="playBtn" aria-label="Putar" title="Putar">${ic("play")}</button>
       </div>
 
-      <div
-        class="player-loading"
-        id="playerLoading"
-        aria-hidden="true"
-      >
-        <span></span>
-      </div>
+      <div class="player-loading" id="playerLoading" aria-hidden="true"><span></span></div>
 
-      <div
-        class="player-controls"
-        id="playerControls"
-      >
+      <div class="next-card" id="nextCard"></div>
+
+      <div class="player-controls" id="playerControls">
         <div class="progress-row">
           <span class="player-current-time" id="playerCurrentTime">0:00</span>
           <div class="seek-wrap">
             <span class="seek-track"></span>
+            <span class="seek-buffer" id="seekBuffer"></span>
             <span class="seek-fill" id="seekFill"></span>
-            <input
-              class="seek"
-              id="seekBar"
-              type="range"
-              min="0"
-              max="1000"
-              value="0"
-              step="1"
-              aria-label="Posisi video"
-            >
+            <span class="seek-tip" id="seekTip" aria-hidden="true">0:00</span>
+            <input class="seek" id="seekBar" type="range" min="0" max="1000" value="0" step="1" aria-label="Posisi video">
           </div>
           <span class="player-duration" id="playerDuration">0:00</span>
         </div>
-
         <div class="player-bottom-row">
           <div class="player-left-controls">
-            <button type="button" class="player-btn player-skip-btn" id="rewindBtn" aria-label="Mundur 10 detik" title="Mundur 10 detik">
-              ${ic("replay10")}
-            </button>
-            <button type="button" class="player-btn player-skip-btn" id="forwardBtn" aria-label="Maju 10 detik" title="Maju 10 detik">
-              ${ic("forward10")}
-            </button>
             <span class="quality-badge" id="qualityBadge">${esc(f.videos?.[0]?.quality || "HD")}</span>
           </div>
-
           <div class="player-right-controls">
+            <button type="button" class="player-btn" id="ccBtn" aria-label="Nyalakan subtitle" title="Subtitle (C)" aria-pressed="false" hidden>${ic("cc")}</button>
             <div class="volume-wrap" id="volumeWrap">
-              <button type="button" class="player-btn" id="muteBtn" aria-label="Bisukan" title="Bisukan">
-                ${ic("volumeOn")}
-              </button>
+              <button type="button" class="player-btn" id="muteBtn" aria-label="Bisukan" title="Bisukan (M)">${ic("volumeOn")}</button>
               <div class="volume-popup" id="volumePopup">
                 <input class="volume" id="volumeBar" type="range" min="0" max="1" value="1" step="0.01" aria-label="Volume">
               </div>
             </div>
-
             <div class="settings-wrap" id="settingsWrap">
-              <button type="button" class="player-btn" id="settingsBtn" aria-label="Pengaturan" title="Pengaturan" aria-expanded="false">
-                ${ic("settings")}
-              </button>
+              <button type="button" class="player-btn" id="settingsBtn" aria-label="Pengaturan" title="Pengaturan" aria-expanded="false">${ic("settings")}</button>
               <div class="settings-popup" id="settingsPopup" role="dialog" aria-label="Pengaturan video">
                 <div class="settings-heading">Pengaturan</div>
-                <div class="settings-section">
-                  <div class="settings-label">Kualitas</div>
-                  <div class="settings-options" id="qualityOptions"></div>
-                </div>
-                <div class="settings-section">
-                  <div class="settings-label">Subtitle</div>
-                  <div class="settings-options" id="subtitleOptions"></div>
-                </div>
-                <div class="settings-section">
-                  <div class="settings-label">Tampilan</div>
-                  <div class="settings-options" id="displayOptions"></div>
-                </div>
+                <div id="settingsBody"></div>
               </div>
             </div>
-
-            <button type="button" class="player-btn" id="fullscreenBtn" aria-label="Layar penuh" title="Layar penuh">
-              ${ic("expand")}
-            </button>
+            <button type="button" class="player-btn" id="pipBtn" aria-label="Picture-in-Picture" title="Picture-in-Picture" hidden>${ic("pip")}</button>
+            <button type="button" class="player-btn" id="fullscreenBtn" aria-label="Layar penuh" title="Layar penuh (F)">${ic("expand")}</button>
           </div>
         </div>
       </div>
 
-      <div class="err">
-
+      <div class="err" role="alert">
         <div>
-
-          <b>
-            Video tidak dapat diputar
-          </b>
-
-          <br>
-
-          Periksa koneksi internet atau pilih kualitas video lain.
-
+          <b>Video tidak dapat diputar</b>
+          <p id="errMsg">Periksa koneksi internet atau pilih resolusi lain di Pengaturan.</p>
+          <div class="err-actions">
+            <button type="button" class="btn primary" data-act="retry">Coba lagi</button>
+            <button type="button" class="btn ghost" data-act="report">Laporkan link rusak</button>
+          </div>
         </div>
-
       </div>
-
     </div>
-
 
     <div class="watch-info">
-
-      <h1>
-        ${esc(f.title)}
-      </h1>
-
+      <h1>${esc(f.title)}</h1>
       ${meta(f)}
-
-      <p
-        class="desc"
-        style="margin-top:14px"
-      >
-        ${esc(f.description)}
-      </p>
-
+      <p class="desc" style="margin-top:14px">${esc(f.description)}</p>
       <div class="actions">
-
         ${favBtn(f)}
-
-        <a
-          class="btn ghost"
-          href="#/film/${f.id}"
-        >
-          Detail Film
-        </a>
-
+        <a class="btn ghost" href="#/film/${f.id}">Detail Film</a>
       </div>
-
     </div>
-
   </div>
 
   <aside class="side-list">
-
-    <h2>
-      Tonton Berikutnya
-    </h2>
-
-    ${
-      rel
-        .map(
-          x=>`
-
-            <a
-              class="mini"
-              href="#/watch/${x.id}"
-            >
-
-              <div class="th">
-
-                <img
-                  loading="lazy"
-                  src="${x.backdrop}"
-                  alt=""
-                >
-
-              </div>
-
-              <div>
-
-                <h3>
-                  ${esc(x.title)}
-                </h3>
-
-                <p>
-                  ${x.year} • ${x.genre[0]}
-                </p>
-
-              </div>
-
-            </a>
-
-          `
-        )
-        .join("")
-    }
-
+    <h2>Tonton Berikutnya</h2>
+    ${rel.map(x=>`
+      <a class="mini" href="#/watch/${x.id}">
+        <div class="th"><img loading="lazy" src="${x.backdrop}" alt=""></div>
+        <div>
+          <h3>${esc(x.title)}</h3>
+          <p>${x.year} • ${x.genre[0]}</p>
+        </div>
+      </a>`).join("")}
   </aside>
 
 </div>
-
 `;
-
 }
-
 
 const notFound = () =>
   empty(
@@ -1853,6 +1825,11 @@ function renderNav(seg){
 
 function router(){
 
+  if(window.__playerCleanup){
+    window.__playerCleanup();
+    window.__playerCleanup = null;
+  }
+
   clearInterval(heroTimer);
 
   const [
@@ -1932,7 +1909,7 @@ function router(){
   if(
     seg==="search" &&
     matchMedia(
-      "(max-width:639px)"
+      "(max-width:699px)"
     ).matches &&
     !q.get("q")
   ){
@@ -1945,1485 +1922,14 @@ function router(){
 }
 
 
-/* =========================================================
-   CUSTOM VIDEO PLAYER
-========================================================= */
-
-function bindPlayer(f){
-
-  if(!f)
-    return;
-
-  const v =
-    $("#vid");
-
-  const p =
-    $("#player");
-
-  if(!v || !p)
-    return;
-
-  const playBtn =
-    $("#playBtn");
-
-  const seek =
-    $("#seekBar");
-
-  const seekFill =
-    $("#seekFill");
-
-  const currentTimeEl =
-    $("#playerCurrentTime");
-
-  const durationEl =
-    $("#playerDuration");
-
-  const qualityBadge =
-    $("#qualityBadge");
-
-  const muteBtn =
-    $("#muteBtn");
-
-  const volume =
-    $("#volumeBar");
-
-  const loading =
-    $("#playerLoading");
-
-  const fsBtn =
-    $("#fullscreenBtn");
-
-  const dim =
-    $("#playerDim");
-
-  const centerControls =
-    $("#centerControls");
-
-  const rewindBtn =
-    $("#rewindBtn");
-
-  const forwardBtn =
-    $("#forwardBtn");
-
-  const volumeWrap =
-    $("#volumeWrap");
-
-  const settingsWrap =
-    $("#settingsWrap");
-
-  const settingsBtn =
-    $("#settingsBtn");
-
-  const settingsPopup =
-    $("#settingsPopup");
-
-  const qualityOptions =
-    $("#qualityOptions");
-
-  const subtitleOptions =
-    $("#subtitleOptions");
-
-  const displayOptions =
-    $("#displayOptions");
-
-  const playerBack =
-    $("#playerBack");
-
-  const controlsBar =
-    $("#playerControls");
-
-  let lastSave = 0;
-
-  let hideTimer = null;
-
-  let seekDragging = false;
-
-  let volumeDragging = false;
-
-  let activeQuality =
-    (Array.isArray(f.videos) && f.videos[0]?.quality) ||
-    f.quality ||
-    "default";
-
-  let subtitleEnabled = false;
-
-  // Default: Fit = video utuh tanpa crop.
-  let displayMode = "fit";
-
-
-  /* -------------------------
-     Time
-  ------------------------- */
-
-  const fmt = t => {
-
-    if(
-      !Number.isFinite(t) ||
-      t<0
-    )
-      return "0:00";
-
-    const sec =
-      Math.floor(
-        t % 60
-      )
-      .toString()
-      .padStart(
-        2,
-        "0"
-      );
-
-    const min =
-      Math.floor(
-        t / 60
-      );
-
-    const hrs =
-      Math.floor(
-        min / 60
-      );
-
-    return hrs
-
-      ? hrs +
-        ":" +
-        String(
-          min % 60
-        ).padStart(
-          2,
-          "0"
-        ) +
-        ":" +
-        sec
-
-      : min +
-        ":" +
-        sec;
-
-  };
-
-
-  const updateTime = () => {
-
-    const d =
-      Number.isFinite(
-        v.duration
-      )
-        ? v.duration
-        : 0;
-
-    const c =
-      Number.isFinite(
-        v.currentTime
-      )
-        ? v.currentTime
-        : 0;
-
-    if(
-      seek &&
-      !seekDragging
-    ){
-
-      seek.value =
-        d
-          ? Math.round(
-              c / d * 1000
-            )
-          : 0;
-
-    }
-
-    if(seekFill){
-
-      seekFill.style.width =
-        (
-          d
-            ? Math.min(
-                100,
-                c / d * 100
-              )
-            : 0
-        ) + "%";
-
-    }
-
-    if(currentTimeEl){
-      currentTimeEl.textContent = fmt(c);
-    }
-
-    if(durationEl){
-      durationEl.textContent = fmt(d);
-    }
-
-  };
-
-
-  /* -------------------------
-     Play UI
-  ------------------------- */
-
-  const updatePlayUI = () => {
-
-    if(!playBtn)
-      return;
-
-    playBtn.innerHTML =
-      v.paused
-        ? ic("play")
-        : ic("pause");
-
-    playBtn.setAttribute(
-      "aria-label",
-      v.paused
-        ? "Putar"
-        : "Jeda"
-    );
-
-    playBtn.title =
-      v.paused
-        ? "Putar"
-        : "Jeda";
-
-    p.classList.toggle(
-      "paused",
-      v.paused
-    );
-
-  };
-
-
-  /* -------------------------
-     Mute UI
-  ------------------------- */
-
-  const updateMuteUI = () => {
-
-    if(!muteBtn)
-      return;
-
-    const muted =
-      v.muted ||
-      v.volume===0;
-
-    muteBtn.innerHTML =
-      muted
-        ? ic("volumeOff")
-        : ic("volumeOn");
-
-    muteBtn.setAttribute(
-      "aria-label",
-      muted
-        ? "Nyalakan suara"
-        : "Bisukan"
-    );
-
-    muteBtn.title =
-      muted
-        ? "Nyalakan suara"
-        : "Bisukan";
-
-    if(
-      volume &&
-      !volumeDragging
-    ){
-
-      volume.value =
-        muted
-          ? 0
-          : v.volume;
-
-    }
-
-  };
-
-
-  /* -------------------------
-     Visibilitas kontrol
-     (auto-hide + klik area
-     kosong)
-  ------------------------- */
-
-  const closeVolumePopup = () =>
-    volumeWrap?.classList.remove(
-      "open"
-    );
-
-  const closeSettingsPopup = () => {
-    settingsWrap?.classList.remove("open");
-    settingsBtn?.setAttribute("aria-expanded", "false");
-  };
-
-  const clearHideTimer = () => {
-
-    if(hideTimer){
-
-      clearTimeout(hideTimer);
-
-      hideTimer = null;
-
-    }
-
-  };
-
-  const scheduleHide = () => {
-
-    clearHideTimer();
-
-    if(!v.paused){
-
-      hideTimer = setTimeout(
-        () => {
-
-          p.classList.remove(
-            "controls-visible"
-          );
-
-          closeVolumePopup();
-          closeSettingsPopup();
-
-        },
-        3000
-      );
-
-    }
-
-  };
-
-  const showControls = () => {
-
-    p.classList.add(
-      "controls-visible"
-    );
-
-    scheduleHide();
-
-  };
-
-  const hideControls = () => {
-
-    p.classList.remove(
-      "controls-visible"
-    );
-
-    closeVolumePopup();
-    closeSettingsPopup();
-
-    clearHideTimer();
-
-  };
-
-  /*
-   * Reset timer auto-hide
-   * setiap ada interaksi
-   * dengan kontrol.
-   */
-
-  const keepAlive = () => {
-
-    p.classList.add(
-      "controls-visible"
-    );
-
-    scheduleHide();
-
-  };
-
-  const toggleControls = () => {
-
-    closeVolumePopup();
-    closeSettingsPopup();
-
-    p.classList.contains(
-      "controls-visible"
-    )
-      ? hideControls()
-      : showControls();
-
-  };
-
-
-  /* -------------------------
-     Settings
-  ------------------------- */
-
-  const getSubtitleMeta = quality => {
-
-    const item =
-      Array.isArray(f.videos)
-        ? f.videos.find(
-            x =>
-              String(x.quality) ===
-              String(quality)
-          )
-        : null;
-
-    const raw =
-      item?.subtitle ||
-      null;
-
-    if(!raw)
-      return null;
-
-    if(typeof raw === "string"){
-      return {
-        url:raw,
-        language:"id",
-        label:"Indonesia"
-      };
-    }
-
-    const url =
-      raw.url ||
-      raw.src ||
-      raw.subtitleUrl ||
-      ((raw.fileId || raw.file_id) &&
-        `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(quality))}`) ||
-      "";
-
-    if(!url)
-      return null;
-
-    return {
-      url,
-      language:raw.language || raw.lang || "id",
-      label:raw.label || (String(raw.language || raw.lang || "id").toLowerCase()==="id" ? "Indonesia" : String(raw.language || raw.lang)),
-      format:raw.format || "vtt"
-    };
-  };
-
-  const getCurrentSubtitle = () =>
-    getSubtitleMeta(activeQuality);
-
-  const renderQualityOptions = () => {
-
-    if(!qualityOptions)
-      return;
-
-    const items =
-      Array.isArray(f.videos)
-        ? f.videos.filter(x => x?.videoUrl)
-        : [];
-
-    if(!items.length){
-      qualityOptions.innerHTML =
-        `<div class="settings-empty">Tidak tersedia</div>`;
-      return;
-    }
-
-    qualityOptions.innerHTML =
-      items.map(item => `
-        <button
-          type="button"
-          class="settings-option ${String(item.quality)===String(activeQuality) ? "on" : ""}"
-          data-settings-quality="${esc(item.quality)}"
-        >
-          <span>${esc(qualityLabel(item.quality))}</span>
-          ${String(item.quality)===String(activeQuality) ? ic("check") : ""}
-        </button>
-      `).join("");
-  };
-
-  const renderSubtitleOptions = () => {
-
-    if(!subtitleOptions)
-      return;
-
-    const meta = getCurrentSubtitle();
-
-    subtitleOptions.innerHTML = `
-      <button
-        type="button"
-        class="settings-option subtitle-option ${!subtitleEnabled ? "on" : ""}"
-        data-subtitle="off"
-      >
-        <span>Nonaktif</span>
-        ${!subtitleEnabled ? ic("check") : ""}
-      </button>
-      ${meta ? `
-        <button
-          type="button"
-          class="settings-option subtitle-option ${subtitleEnabled ? "on" : ""}"
-          data-subtitle="on"
-        >
-          <span>${esc(meta.label || "Indonesia")}</span>
-          ${subtitleEnabled ? ic("check") : ""}
-        </button>
-      ` : `
-        <div class="settings-empty">Subtitle tidak tersedia</div>
-      `}
-    `;
-  };
-
-  const applyDisplayMode = mode => {
-
-    displayMode = mode === "fill" ? "fill" : "fit";
-
-    p.classList.toggle(
-      "video-fill",
-      displayMode === "fill"
-    );
-
-    if(displayOptions){
-      displayOptions
-        .querySelectorAll("[data-display-mode]")
-        .forEach(btn => {
-          const active =
-            btn.dataset.displayMode === displayMode;
-
-          btn.classList.toggle("on", active);
-          btn.innerHTML = `
-            <span>${btn.dataset.displayMode === "fill" ? "Fill" : "Fit"}</span>
-            ${active ? ic("check") : ""}
-          `;
-        });
-    }
-  };
-
-  const renderDisplayOptions = () => {
-
-    if(!displayOptions)
-      return;
-
-    displayOptions.innerHTML = `
-      <button
-        type="button"
-        class="settings-option ${displayMode === "fit" ? "on" : ""}"
-        data-display-mode="fit"
-      >
-        <span>Fit</span>
-        ${displayMode === "fit" ? ic("check") : ""}
-      </button>
-      <button
-        type="button"
-        class="settings-option ${displayMode === "fill" ? "on" : ""}"
-        data-display-mode="fill"
-      >
-        <span>Fill</span>
-        ${displayMode === "fill" ? ic("check") : ""}
-      </button>
-    `;
-  };
-
-  const removeSubtitleTrack = () => {
-    v.querySelectorAll("track[data-idflix-subtitle]")
-      .forEach(track => track.remove());
-  };
-
-  const applySubtitle = enabled => {
-
-    subtitleEnabled = !!enabled;
-
-    removeSubtitleTrack();
-
-    if(!subtitleEnabled)
-      return;
-
-    const meta = getCurrentSubtitle();
-
-    if(!meta?.url)
-      return;
-
-    const track =
-      document.createElement("track");
-
-    track.kind = "subtitles";
-    track.label = meta.label || "Indonesia";
-    track.srclang = meta.language || "id";
-    track.src = meta.url;
-    track.default = true;
-    track.dataset.idflixSubtitle = "1";
-
-    v.appendChild(track);
-
-    // Aktifkan TextTrack secara langsung dan ulangi setelah browser
-    // selesai membuat TextTrackList. Ini lebih konsisten di Chrome Android.
-    const showTrack = () => {
-      try {
-        const tracks = [...v.textTracks];
-        tracks.forEach(t => { t.mode = "disabled"; });
-        const latest = track.track || tracks[tracks.length - 1];
-        if(latest) latest.mode = "showing";
-      } catch {}
-    };
-
-    showTrack();
-    track.addEventListener("load", showTrack, {once:true});
-    setTimeout(showTrack, 50);
-    setTimeout(showTrack, 250);
-    setTimeout(showTrack, 1000);
-  };
-
-  const openSettings = () => {
-    closeVolumePopup();
-    renderQualityOptions();
-    renderSubtitleOptions();
-    renderDisplayOptions();
-    settingsWrap?.classList.add("open");
-    settingsBtn?.setAttribute("aria-expanded", "true");
-    keepAlive();
-  };
-
-  const toggleSettings = () => {
-    if(settingsWrap?.classList.contains("open"))
-      closeSettingsPopup();
-    else
-      openSettings();
-  };
-
-  settingsBtn?.addEventListener("click", e => {
-    e.stopPropagation();
-    toggleSettings();
-  });
-
-  settingsPopup?.addEventListener("click", e => {
-    e.stopPropagation();
-
-    const qualityBtn =
-      e.target.closest("[data-settings-quality]");
-
-    if(qualityBtn){
-      const quality =
-        qualityBtn.dataset.settingsQuality;
-
-      const item =
-        Array.isArray(f.videos)
-          ? f.videos.find(
-              x => String(x.quality)===String(quality)
-            )
-          : null;
-
-      if(!item?.videoUrl)
-        return;
-
-      const wasPlaying = !v.paused;
-      saveProgress();
-      activeQuality = quality;
-      if(qualityBadge) qualityBadge.textContent = qualityLabel(quality);
-
-      setSource(
-        item.videoUrl,
-        quality,
-        wasPlaying
-      );
-
-      renderQualityOptions();
-      removeSubtitleTrack();
-      if(subtitleEnabled && getCurrentSubtitle()) {
-        applySubtitle(true);
-      } else {
-        renderSubtitleOptions();
-      }
-      closeSettingsPopup();
-      keepAlive();
-      return;
-    }
-
-    const subtitleBtn =
-      e.target.closest("[data-subtitle]");
-
-    if(subtitleBtn){
-      const enabled =
-        subtitleBtn.dataset.subtitle === "on";
-
-      applySubtitle(enabled);
-      renderSubtitleOptions();
-      closeSettingsPopup();
-      keepAlive();
-      return;
-    }
-
-    const displayBtn =
-      e.target.closest("[data-display-mode]");
-
-    if(displayBtn){
-      applyDisplayMode(
-        displayBtn.dataset.displayMode
-      );
-      renderDisplayOptions();
-      closeSettingsPopup();
-      keepAlive();
-    }
-  });
-
-  playerBack?.addEventListener("click", e => {
-    e.stopPropagation();
-    if(history.length > 1)
-      history.back();
-    else
-      location.hash = "#/";
-  });
-
-  /* -------------------------
-     Fullscreen
-  ------------------------- */
-
-  const updateFullscreenUI =
-    () => {
-
-      if(!fsBtn)
-        return;
-
-      const active =
-        document.fullscreenElement===p ||
-        document.webkitFullscreenElement===p;
-
-      fsBtn.innerHTML =
-        ic("expand");
-
-      fsBtn.setAttribute(
-        "aria-label",
-        active
-          ? "Keluar dari layar penuh"
-          : "Layar penuh"
-      );
-
-      fsBtn.title =
-        active
-          ? "Keluar dari layar penuh"
-          : "Layar penuh";
-
-    };
-
-
-  const isMobile =
-    () =>
-      /Android|iPhone|iPad|iPod|Mobile/i
-        .test(
-          navigator.userAgent || ""
-        );
-
-
-  const lockLandscape =
-    async () => {
-
-      if(!isMobile())
-        return;
-
-      try{
-
-        if(
-          screen.orientation?.lock
-        ){
-
-          await screen.orientation.lock(
-            "landscape"
-          );
-
-        }
-
-      }catch{}
-
-    };
-
-
-  const unlockOrientation =
-    async () => {
-
-      if(!isMobile())
-        return;
-
-      try{
-
-        if(
-          screen.orientation?.unlock
-        ){
-
-          screen.orientation.unlock();
-
-        }
-
-      }catch{}
-
-    };
-
-
-  const toggleFullscreen =
-    async () => {
-
-      try{
-
-        const active =
-          document.fullscreenElement ||
-          document.webkitFullscreenElement;
-
-        if(active){
-
-          if(
-            document.exitFullscreen
-          ){
-
-            await document.exitFullscreen();
-
-          }else if(
-            document.webkitExitFullscreen
-          ){
-
-            document.webkitExitFullscreen();
-
-          }
-
-          await unlockOrientation();
-
-          return;
-
-        }
-
-        if(
-          p.requestFullscreen
-        ){
-
-          await p.requestFullscreen();
-
-          await lockLandscape();
-
-        }else if(
-          p.webkitRequestFullscreen
-        ){
-
-          p.webkitRequestFullscreen();
-
-          await lockLandscape();
-
-        }else if(
-          v.webkitEnterFullscreen
-        ){
-
-          v.webkitEnterFullscreen();
-
-        }
-
-      }catch{}
-
-    };
-
-
-  /* -------------------------
-     Save Progress
-  ------------------------- */
-
-  const saveProgress =
-    () => {
-
-      if(
-        !v.duration ||
-        !Number.isFinite(
-          v.currentTime
-        )
-      )
-        return;
-
-      const value =
-        Math.max(
-          0,
-          Math.min(
-            1,
-            v.currentTime /
-            v.duration
-          )
-        );
-
-      progress[
-        f.id +
-        ":" +
-        activeQuality
-      ] = value;
-
-      /*
-       * Global progress
-       * digunakan card resume.
-       */
-
-      progress[f.id] =
-        value;
-
-      store.set(
-        "idflix:progress",
-        progress
-      );
-
-    };
-
-
-  /* -------------------------
-     Restore Progress
-  ------------------------- */
-
-  const restoreProgress =
-    () => {
-
-      if(!v.duration)
-        return;
-
-      const saved =
-        progress[
-          f.id +
-          ":" +
-          activeQuality
-        ] ??
-        progress[f.id] ??
-        0;
-
-      if(
-        saved>0 &&
-        saved<.99
-      ){
-
-        v.currentTime =
-          Math.min(
-            saved *
-            v.duration,
-
-            v.duration -
-            .1
-          );
-
-      }
-
-      updateTime();
-
-    };
-
-
-  /* -------------------------
-     Source
-  ------------------------- */
-
-  const setSource =
-    (
-      url,
-      quality,
-      autoplay=false
-    ) => {
-
-      if(!url)
-        return;
-
-      activeQuality =
-        quality ||
-        "default";
-
-      loading?.classList.add(
-        "on"
-      );
-
-      p.classList.remove(
-        "fail"
-      );
-
-      v.src = url;
-
-      v.addEventListener(
-        "loadedmetadata",
-
-        () => {
-
-          restoreProgress();
-
-          loading?.classList.remove(
-            "on"
-          );
-
-          if(subtitleEnabled && getCurrentSubtitle()) {
-            applySubtitle(true);
-          }
-
-          if(autoplay){
-
-            v.play()
-              .catch(
-                ()=>{}
-              );
-
-          }
-
-        },
-
-        {
-          once:true
-        }
-      );
-
-      v.load();
-
-    };
-
-
-  const wakeControls = () => {
-    showControls();
-  };
-
-  p.addEventListener("mousemove", wakeControls, {passive:true});
-  p.addEventListener("pointermove", e => {
-    if(e.pointerType !== "touch") wakeControls();
-  }, {passive:true});
-
-  /* -------------------------
-     Events
-  ------------------------- */
-
-  const togglePlay = () =>
-    v.paused
-      ? v.play().catch(()=>{})
-      : v.pause();
-
-  playBtn?.addEventListener(
-    "click",
-    () => {
-
-      togglePlay();
-
-      keepAlive();
-
-    }
-  );
-
-
-  rewindBtn?.addEventListener(
-    "click",
-    () => {
-
-      v.currentTime =
-        Math.max(
-          0,
-          v.currentTime - 10
-        );
-
-      updateTime();
-
-      keepAlive();
-
-    }
-  );
-
-
-  forwardBtn?.addEventListener(
-    "click",
-    () => {
-
-      v.currentTime =
-        Math.min(
-          v.duration ||
-          Infinity,
-
-          v.currentTime + 10
-        );
-
-      updateTime();
-
-      keepAlive();
-
-    }
-  );
-
-
-  /*
-   * Klik/tap area kosong player hanya untuk MEMUNCULKAN navigasi.
-   * Jika navigasi sudah terlihat, klik area kosong tidak melakukan apa-apa.
-   * Tombol dan kontrol interaktif tetap ditangani listener masing-masing.
-   */
-  p.addEventListener(
-    "click",
-    e => {
-      const target = e.target;
-      if (!(target instanceof Element)) return;
-
-      if (target.closest(
-        ".player-controls, .player-topbar, .center-controls, .player-btn, .settings-popup, .volume-popup, input, button, a"
-      )) {
-        return;
-      }
-
-      if (!p.classList.contains("controls-visible")) {
-        showControls();
-      }
-    }
-  );
-
-
-  seek?.addEventListener(
-    "pointerdown",
-    () => {
-
-      seekDragging = true;
-
-      keepAlive();
-
-    }
-  );
-
-  [
-    "pointerup",
-    "pointercancel"
-  ].forEach(
-    ev =>
-      seek?.addEventListener(
-        ev,
-        () => {
-
-          seekDragging = false;
-
-        }
-      )
-  );
-
-  seek?.addEventListener(
-    "input",
-    () => {
-
-      if(v.duration){
-
-        v.currentTime =
-          (
-            Number(
-              seek.value
-            ) / 1000
-          ) *
-          v.duration;
-
-      }
-
-      if(seekFill){
-
-        seekFill.style.width =
-          (
-            Number(
-              seek.value
-            ) / 10
-          ) + "%";
-
-      }
-
-      updateTime();
-
-      keepAlive();
-
-    }
-  );
-
-
-  muteBtn?.addEventListener(
-    "click",
-    () => {
-
-      v.muted =
-        !v.muted;
-
-      if(
-        !v.muted &&
-        v.volume===0
-      ){
-
-        v.volume=.7;
-
-      }
-
-      updateMuteUI();
-
-      closeSettingsPopup();
-      if(window.matchMedia("(pointer:coarse)").matches){
-        volumeWrap?.classList.remove("open");
-      }
-
-      keepAlive();
-
-    }
-  );
-
-
-  volume?.addEventListener(
-    "pointerdown",
-    () => {
-
-      volumeDragging = true;
-
-    }
-  );
-
-  [
-    "pointerup",
-    "pointercancel"
-  ].forEach(
-    ev =>
-      volume?.addEventListener(
-        ev,
-        () => {
-
-          volumeDragging = false;
-
-        }
-      )
-  );
-
-  volume?.addEventListener(
-    "input",
-    () => {
-
-      v.volume =
-        Number(
-          volume.value
-        );
-
-      v.muted =
-        v.volume===0;
-
-      updateMuteUI();
-
-      keepAlive();
-
-    }
-  );
-
-
-  fsBtn?.addEventListener(
-    "click",
-    () => {
-
-      toggleFullscreen();
-
-      keepAlive();
-
-    }
-  );
-
-
-  v.addEventListener(
-    "play",
-    () => {
-
-      updatePlayUI();
-
-      scheduleHide();
-
-    }
-  );
-
-  v.addEventListener(
-    "pause",
-    () => {
-
-      updatePlayUI();
-
-      clearHideTimer();
-
-      p.classList.add(
-        "controls-visible"
-      );
-
-    }
-  );
-
-
-  v.addEventListener(
-    "loadedmetadata",
-    () => {
-
-      restoreProgress();
-
-      updatePlayUI();
-
-      updateMuteUI();
-
-      updateTime();
-
-    }
-  );
-
-
-  v.addEventListener(
-    "loadeddata",
-    () => {
-
-      p.classList.remove(
-        "fail"
-      );
-
-      loading?.classList.remove(
-        "on"
-      );
-
-    }
-  );
-
-
-  v.addEventListener(
-    "waiting",
-    () =>
-      loading?.classList.add(
-        "on"
-      )
-  );
-
-
-  v.addEventListener(
-    "playing",
-    () => {
-
-      loading?.classList.remove(
-        "on"
-      );
-
-      updatePlayUI();
-
-    }
-  );
-
-
-  v.addEventListener(
-    "canplay",
-    () =>
-      loading?.classList.remove(
-        "on"
-      )
-  );
-
-
-  v.addEventListener(
-    "error",
-    () => {
-
-      loading?.classList.remove(
-        "on"
-      );
-
-      p.classList.add(
-        "fail"
-      );
-
-    }
-  );
-
-
-  v.addEventListener(
-    "timeupdate",
-    () => {
-
-      updateTime();
-
-      if(
-        Date.now() -
-        lastSave >=
-        1000
-      ){
-
-        lastSave =
-          Date.now();
-
-        saveProgress();
-
-      }
-
-    }
-  );
-
-
-  v.addEventListener(
-    "ended",
-    () => {
-
-      progress[
-        f.id +
-        ":" +
-        activeQuality
-      ] = 1;
-
-      progress[f.id] =
-        1;
-
-      store.set(
-        "idflix:progress",
-        progress
-      );
-
-      updatePlayUI();
-
-    }
-  );
-
-
-  /* -------------------------
-     Fullscreen events
-  ------------------------- */
-
-  document.addEventListener(
-    "fullscreenchange",
-    async () => {
-
-      updateFullscreenUI();
-
-      const active =
-        document.fullscreenElement===p ||
-        document.webkitFullscreenElement===p;
-
-      if(active)
-        await lockLandscape();
-      else
-        await unlockOrientation();
-
-    }
-  );
-
-
-  document.addEventListener(
-    "webkitfullscreenchange",
-    async () => {
-
-      updateFullscreenUI();
-
-      const active =
-        document.fullscreenElement===p ||
-        document.webkitFullscreenElement===p;
-
-      if(active)
-        await lockLandscape();
-      else
-        await unlockOrientation();
-
-    }
-  );
-
-
-  /* -------------------------
-     Quality
-     Handled by Settings popup.
-  ------------------------- */
-
-  // Subtitle default-nya nonaktif. User memilih sendiri dari Settings.
-  subtitleEnabled = false;
-  renderQualityOptions();
-  renderSubtitleOptions();
-  removeSubtitleTrack();
-
-  if(qualityBadge) qualityBadge.textContent = qualityLabel(activeQuality);
-  p.classList.add("controls-visible");
-  updatePlayUI();
-
-  updateMuteUI();
-
-  updateFullscreenUI();
-
-  updateTime();
-
-  /*
-   * Video mulai dalam
-   * keadaan paused,
-   * jadi navigasi tampil
-   * dari awal.
-   */
-
-  p.classList.add(
-    "controls-visible"
-  );
-
-  loading?.classList.add(
-    "on"
-  );
-
-}
+/* Player: lihat player.js */
 
 
 /* =========================================================
    SEARCH
 ========================================================= */
+
+let searchTimer;
 
 function liveSearch(val){
 
@@ -3488,9 +1994,7 @@ function liveSearch(val){
       ".page-title"
     )
     .textContent =
-      term
-        ? `Hasil untuk “${val}”`
-        : "Cari Film";
+      term ? `Hasil untuk “${val}”` : "";
 
 }
 
@@ -3507,7 +2011,11 @@ document.addEventListener(
       const v =
         e.target.value;
 
-      liveSearch(v);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(
+        () => liveSearch(v),
+        250
+      );
 
       const o =
         $("#topSearch");
@@ -3556,20 +2064,20 @@ document.addEventListener(
       const id =
         fb.dataset.fav;
 
-      favs =
-        favs.includes(id)
-          ? favs.filter(
-              x=>x!==id
-            )
-          : [
-              ...favs,
-              id
-            ];
+      const adding = !favs.includes(id);
 
-      store.set(
-        "idflix:favs",
-        favs
-      );
+      favs = adding
+        ? [...favs, id]
+        : favs.filter(x=>x!==id);
+
+      if(adding) favTimes[id] = Date.now();
+      else delete favTimes[id];
+
+      store.set("idflix:favs", favs);
+      store.set("idflix:favts", favTimes);
+
+      window.IDFLIX_SYNC &&
+        IDFLIX_SYNC.setFavorite(id, adding, favTimes[id]);
 
       const f =
         byId(id);
@@ -3581,6 +2089,12 @@ document.addEventListener(
       return;
 
     }
+    if(e.target.closest("[data-dismiss-banner]")){
+      store.set("idflix:bannerHide", Date.now());
+      e.target.closest(".save-banner")?.remove();
+      return;
+    }
+
 
     if(dt)
       window.__slide(
@@ -3600,5 +2114,14 @@ window.addEventListener(
   router
 );
 
+/* Skeleton langsung tampil; login anonymous berjalan paralel dengan pemuatan film. */
+if(!location.hash.startsWith("#/watch")){
+  $("#view").innerHTML = skeleton();
+}
+
 loadFilms()
   .then(router);
+
+if(window.IDFLIX_SYNC){
+  IDFLIX_SYNC.start().then(syncAccount);
+}

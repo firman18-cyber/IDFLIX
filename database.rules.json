@@ -9,18 +9,36 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid",
         "favorites": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && auth.uid === $uid"
+          "$movieId": {
+            ".validate": "$movieId.length <= 120 && newData.isNumber()"
+          }
         },
-        "continueWatching": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && auth.uid === $uid"
+        "progress": {
+          "$movieId": {
+            ".validate": "$movieId.length <= 120 && newData.hasChildren(['t', 'd', 'q', 'updatedAt'])",
+            "t": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "d": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "q": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "updatedAt": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+            "$other": { ".validate": false }
+          }
         },
-        "history": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && auth.uid === $uid"
-        }
+        "$other": { ".validate": false }
       }
-    }
+    },
+    "reports": {
+      ".read": false,
+      "$reportId": {
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.hasChildren(['movieId', 'type', 'uid', 'createdAt']) && newData.child('uid').val() === auth.uid",
+        "movieId": { ".validate": "newData.isString() && newData.val().length <= 120" },
+        "type": { ".validate": "newData.val() === 'broken-link' || newData.val() === 'takedown'" },
+        "quality": { ".validate": "newData.isString() && newData.val().length <= 16" },
+        "uid": { ".validate": "newData.isString()" },
+        "createdAt": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+        "$other": { ".validate": false }
+      }
+    },
+    "$other": { ".read": false, ".write": false }
   }
 }

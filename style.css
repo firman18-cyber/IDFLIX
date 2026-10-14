@@ -1712,7 +1712,7 @@ img{
    MOBILE
 ========================================================= */
 
-@media (max-width:639px){
+@media (max-width:699px){
 
   :root{
     --pad:16px;
@@ -2760,3 +2760,229 @@ img{
     display:none !important;
   }
 }
+
+/* =========================================================
+   IDFLIX v1.0 — tambahan sesuai PRD
+========================================================= */
+
+/* Lencana Tamu (F-01) */
+.avatar{position:relative}
+.guest-badge{
+  position:absolute;right:-4px;bottom:-5px;padding:1px 5px;border-radius:6px;
+  background:var(--red);color:#fff;font-size:9px;font-weight:700;letter-spacing:.2px;line-height:1.4;
+  pointer-events:none;
+}
+.guest-pill{
+  display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;
+  background:rgba(229,15,42,.16);color:#ff7a8a;font-size:11px;font-weight:650;vertical-align:middle;
+}
+.profile-head{
+  display:flex;gap:14px;align-items:center;margin:0 0 22px;padding:16px;
+  border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.03);
+}
+.profile-head p{margin:4px 0 0;color:rgba(255,255,255,.62);font-size:13px;line-height:1.5}
+.profile-avatar{
+  flex:0 0 48px;width:48px;height:48px;display:grid;place-items:center;border-radius:50%;
+  background:rgba(255,255,255,.08);
+}
+.profile-avatar svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8}
+
+/* Banner Simpan progresmu */
+.save-banner{
+  display:flex;gap:14px;align-items:center;justify-content:space-between;
+  margin:18px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;
+  background:rgba(229,15,42,.07);font-size:13px;line-height:1.5;
+}
+.save-banner b{display:block;margin-bottom:2px}
+.save-banner span{color:rgba(255,255,255,.7)}
+.banner-close{
+  flex:0 0 auto;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;
+  background:transparent;color:var(--text);font-size:13px;cursor:pointer;
+}
+
+/* Bar progres di halaman detail */
+.resume-bar{height:4px;margin-top:14px;max-width:320px;border-radius:2px;background:rgba(255,255,255,.18);overflow:hidden}
+.resume-bar i{display:block;height:100%;background:var(--red)}
+
+/* Skeleton (F-02) */
+.skeleton-page{padding:16px 0}
+.sk{
+  border-radius:10px;background:linear-gradient(90deg,#15151d 25%,#20202b 50%,#15151d 75%);
+  background-size:200% 100%;animation:sk-shimmer 1.3s linear infinite;
+}
+.sk-hero{height:clamp(200px,42vw,420px);border-radius:16px}
+.sk-title{width:180px;height:20px;margin:26px 0 12px}
+.sk-row{display:flex;gap:12px;overflow:hidden}
+.sk-card{flex:0 0 clamp(110px,28vw,160px)}
+.sk-poster{aspect-ratio:2/3;border-radius:10px}
+.sk-line{height:11px;margin-top:8px;border-radius:6px}
+.sk-line.short{width:60%}
+@keyframes sk-shimmer{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
+
+/* Tampilan video: Stretch */
+.player.video-stretch video{object-fit:fill}
+
+/* Seek: buffer + pratinjau waktu */
+.seek-buffer{
+  position:absolute;left:0;top:50%;width:0;height:5px;border-radius:3px;transform:translateY(-50%);
+  background:rgba(255,255,255,.4);pointer-events:none;
+}
+.seek-fill{z-index:1}
+.seek-tip{
+  position:absolute;bottom:22px;transform:translateX(-50%);padding:3px 7px;border-radius:6px;
+  background:rgba(0,0,0,.82);color:#fff;font-size:11.5px;font-variant-numeric:tabular-nums;
+  pointer-events:none;opacity:0;transition:opacity .1s;z-index:3;white-space:nowrap;
+}
+.seek-tip.on{opacity:1}
+
+/* Tombol CC & PiP */
+.player-btn[hidden]{display:none}
+#ccBtn.on{color:#fff;box-shadow:inset 0 -3px 0 var(--red)}
+.player-skip-btn{display:none}
+
+/* Mobile: volume memakai tombol perangkat */
+@media (pointer:coarse){.volume-wrap{display:none}}
+
+/* Panel Pengaturan */
+.settings-popup{
+  width:min(280px,calc(100vw - 24px));max-height:min(64vh,420px);overflow-y:auto;
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+}
+@media (max-width:520px){.settings-popup{width:min(268px,calc(100vw - 24px));right:-6px}}
+.seg{display:flex;flex-wrap:wrap;gap:6px;padding:4px 9px 6px}
+.seg-btn{
+  min-height:36px;padding:0 11px;border:1px solid rgba(255,255,255,.16);border-radius:8px;
+  background:transparent;color:#fff;font-size:12.5px;cursor:pointer;
+}
+.seg-btn.on{background:var(--red);border-color:var(--red);font-weight:650}
+.seg-btn:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.sub-label{padding:4px 9px 0;color:rgba(255,255,255,.55);font-size:10.5px}
+.range-row{display:flex;align-items:center;gap:10px;padding:4px 9px 8px;font-size:12.5px}
+.range-row input{flex:1;min-width:0;height:28px;accent-color:var(--red)}
+
+/* Subtitle (overlay sendiri, kontras tinggi) */
+.sub-overlay{
+  position:absolute;left:6%;right:6%;bottom:14px;z-index:4;text-align:center;pointer-events:none;
+  transition:bottom .2s ease;
+}
+.player.controls-visible .sub-overlay{bottom:86px}
+.sub-overlay>div{display:inline-block;margin:2px auto;padding:2px 9px;border-radius:5px;color:#fff;line-height:1.35;
+  text-shadow:0 0 3px #000,0 1px 3px #000,0 0 8px rgba(0,0,0,.9);font-weight:600;white-space:pre-wrap}
+.sub-overlay[data-size="s"]{font-size:clamp(12px,2.2vw,17px)}
+.sub-overlay[data-size="m"]{font-size:clamp(14px,2.8vw,22px)}
+.sub-overlay[data-size="l"]{font-size:clamp(17px,3.6vw,30px)}
+.sub-overlay[data-bg="none"]>div{background:none}
+.sub-overlay[data-bg="semi"]>div{background:rgba(0,0,0,.55)}
+.sub-overlay[data-bg="solid"]>div{background:#000;text-shadow:none}
+.player:fullscreen .sub-overlay[data-size="m"]{font-size:clamp(18px,2.6vw,34px)}
+.player:fullscreen .sub-overlay[data-size="l"]{font-size:clamp(22px,3.4vw,44px)}
+
+/* Petunjuk loncat 10 detik */
+.skip-hint{
+  position:absolute;top:50%;z-index:6;display:flex;align-items:center;gap:6px;padding:12px 18px;
+  border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:14px;font-weight:650;
+  transform:translateY(-50%);opacity:0;pointer-events:none;
+}
+.skip-hint svg{width:22px;height:22px}
+.skip-hint.left{left:10%}.skip-hint.right{right:10%}
+.skip-hint.show{animation:skip-pop .7s ease}
+@keyframes skip-pop{0%{opacity:0;transform:translateY(-50%) scale(.85)}20%{opacity:1;transform:translateY(-50%) scale(1)}75%{opacity:1}100%{opacity:0}}
+
+/* Toast di dalam player (tetap terlihat saat fullscreen) */
+.player-toast{
+  position:absolute;top:16px;left:50%;z-index:8;max-width:86%;padding:8px 14px;border-radius:999px;
+  background:rgba(0,0,0,.78);color:#fff;font-size:13px;text-align:center;transform:translate(-50%,-6px);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+}
+.player-toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* Kartu Berikutnya (F-10) */
+.next-card{
+  position:absolute;right:14px;bottom:96px;z-index:9;display:none;width:min(300px,calc(100% - 28px));
+  gap:10px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:12px;
+  background:rgba(14,14,20,.94);color:#fff;
+}
+.next-card.on{display:flex}
+.next-card img{flex:0 0 96px;width:96px;height:60px;border-radius:8px;object-fit:cover}
+.next-info{min-width:0;display:flex;flex-direction:column;gap:2px;justify-content:center}
+.next-info small{color:rgba(255,255,255,.6);font-size:11px}
+.next-info b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.next-actions{display:flex;gap:8px;margin-top:4px;align-items:center}
+.next-play{
+  display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:0 12px;border-radius:8px;
+  background:var(--red);color:#fff;font-size:12.5px;font-weight:650;text-decoration:none;
+}
+.next-play svg{width:13px;height:13px}
+.next-close{min-height:36px;padding:0 8px;border:0;background:transparent;color:rgba(255,255,255,.72);font-size:12.5px;cursor:pointer}
+
+/* State error (F-09) */
+.player .err p{margin:8px 0 0;color:rgba(255,255,255,.7);font-size:13.5px}
+.err-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:16px}
+.err-actions .btn{min-height:44px}
+.err-actions .btn:disabled{opacity:.55}
+
+@media (max-width:520px){
+  .next-card{right:8px;bottom:84px}
+  .player.controls-visible .sub-overlay{bottom:78px}
+}
+
+/* Breakpoint PRD F-08: mobile < 700 px (bottom-nav), desktop >= 700 px (sidebar). */
+@media (min-width:700px) and (max-width:767px){
+  .app{grid-template-columns:var(--side) minmax(0,1fr)}
+  .sidebar{display:flex}
+  .bottom-nav{display:none}
+}
+
+/* Target sentuh >= 44 px (PRD F-08) */
+@media (pointer:coarse){
+  .player-btn,.player-back{width:44px;height:44px;flex-basis:44px}
+  .seek-wrap{height:44px}
+  .seek{height:44px}
+  .icon-btn{min-width:44px;min-height:44px}
+  .seg-btn,.settings-option{min-height:44px}
+}
+@media (pointer:coarse) and (max-width:520px){
+  .player-btn,.player-back{width:44px;height:44px;flex-basis:44px}
+  .player-left-controls,.player-right-controls{gap:0}
+}
+
+/* =========================================================
+   Perapihan: Cari, Profil, state kosong
+========================================================= */
+.page-title:empty{display:none}
+
+/* Cari: genre tepat di bawah kotak pencarian, tidak terpotong */
+.search-genres{margin-top:16px}
+.search-genres .sec-head{margin-bottom:10px}
+.search-genres .sec-head h2{font-size:15px;color:rgba(255,255,255,.72);font-weight:650}
+.search-genres .chips{flex-wrap:wrap;overflow:visible;gap:8px;padding-bottom:0}
+.search-genres .chip{padding:8px 15px;font-size:13.5px}
+.search-hint{
+  display:flex;align-items:center;justify-content:center;gap:8px;margin:28px var(--pad) 0;
+  color:var(--mute);font-size:13.5px;text-align:center;
+}
+.search-hint svg{width:18px;height:18px;flex:none;opacity:.7}
+#results .empty{margin-top:24px}
+
+/* State kosong: ringkas, dalam kotak putus-putus */
+.empty{
+  margin:20px auto;max-width:none;padding:22px 18px;
+  border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.02);
+  font-size:13.5px;line-height:1.55;
+}
+.sec>.empty,.sec .empty{margin:0}
+.empty svg{width:30px;height:30px;margin-bottom:8px;opacity:.55}
+.empty b{font-size:15px;margin-bottom:2px}
+#results>.empty{margin:20px 0}
+
+/* Profil */
+.profile-head{margin:14px var(--pad) 0;padding:14px 16px;gap:14px;align-items:flex-start}
+.profile-head b{font-size:16px}
+.profile-head p{font-size:12.5px;color:rgba(255,255,255,.58)}
+.profile-avatar{flex:0 0 44px;width:44px;height:44px}
+.profile-avatar svg{width:22px;height:22px}
+/* Di halaman Cari, chip genre adalah tautan ke halaman Film, bukan filter aktif */
+.search-genres .chip.on{background:var(--panel2);border-color:var(--line)}
+.search-genres + .page-title{padding-top:20px}
+.m-search input::-webkit-search-cancel-button,#topSearch::-webkit-search-cancel-button{filter:grayscale(1) brightness(1.8)}
