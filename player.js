@@ -175,16 +175,23 @@ function bindPlayer(f) {
   };
 
   /* ---------- subtitle (overlay sendiri agar ukuran/latar bisa diatur) ---------- */
+  // Subtitle tidak terikat resolusi: pakai subtitle kualitas aktif bila ada,
+  // jika tidak, pakai subtitle dari kualitas mana pun yang punya.
   const subtitleFor = quality => {
-    const item = videos.find(x => String(x.quality) === String(quality));
-    const raw = item?.subtitle;
-    if (!raw) return null;
-    if (typeof raw === "string") return { url: raw, language: "id", label: "Indonesia" };
-    const lang = raw.language || raw.lang || "id";
-    const url = raw.url || raw.src || raw.subtitleUrl ||
-      ((raw.fileId || raw.file_id) && `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(quality))}${f.epId ? `?ep=${encodeURIComponent(f.epId)}` : ""}`) || "";
-    if (!url) return null;
-    return { url, language: lang, label: raw.label || (String(lang).toLowerCase() === "id" ? "Indonesia" : String(lang)) };
+    const build = item => {
+      const raw = item?.subtitle;
+      if (!raw) return null;
+      if (typeof raw === "string") return { url: raw, language: "id", label: "Indonesia" };
+      const lang = raw.language || raw.lang || "id";
+      const url = raw.url || raw.src || raw.subtitleUrl ||
+        ((raw.fileId || raw.file_id) && `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(item.quality))}${f.epId ? `?ep=${encodeURIComponent(f.epId)}` : ""}`) || "";
+      if (!url) return null;
+      return { url, language: lang, label: raw.label || (String(lang).toLowerCase() === "id" ? "Indonesia" : String(lang)) };
+    };
+    const active = videos.find(x => String(x.quality) === String(quality));
+    const ordered = active ? [active, ...videos.filter(x => x !== active)] : videos;
+    for (const item of ordered) { const m = build(item); if (m) return m; }
+    return null;
   };
   const renderCue = () => {
     if (!subOverlay) return;
@@ -197,28 +204,44 @@ function bindPlayer(f) {
     }));
   };
   const removeSubtitle = () => {
+    if (subTrackEl?.src?.startsWith("blob:")) { try { URL.revokeObjectURL(subTrackEl.src); } catch (e) {} }
     subTrackEl?.remove();
     subTrackEl = null;
     subOverlay?.replaceChildren();
   };
-  const applySubtitle = enabled => {
+  // Track lintas origin diblokir browser tanpa CORS; ambil via fetch lalu pasang sebagai Blob (same-origin).
+  const toVtt = txt => {
+    txt = txt.replace(/^\uFEFF/, "").replace(/\r+/g, "");
+    if (/^WEBVTT/.test(txt)) return txt;
+    return "WEBVTT\n\n" + txt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+  };
+  let subReq = 0;
+  const applySubtitle = async enabled => {
     subOn = !!enabled;
     removeSubtitle();
     updateCcUI();
     if (!subOn) return;
     const meta = subtitleFor(activeQuality);
     if (!meta) { subOn = false; updateCcUI(); return; }
-    const t = document.createElement("track");
-    t.kind = "subtitles"; t.label = meta.label; t.srclang = meta.language; t.src = meta.url;
-    v.appendChild(t);
-    subTrackEl = t;
-    const bind = () => {
-      if (!t.track) return;
+    const id = ++subReq;
+    try {
+      const res = await fetch(meta.url);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const vtt = toVtt(await res.text());
+      if (id !== subReq || !subOn) return;
+      const t = document.createElement("track");
+      t.kind = "subtitles"; t.label = meta.label; t.srclang = meta.language;
+      t.src = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+      v.appendChild(t);
+      subTrackEl = t;
       t.track.mode = document.pictureInPictureElement === v ? "showing" : "hidden";
       t.track.addEventListener("cuechange", renderCue);
-    };
-    bind();
-    t.addEventListener("load", renderCue, { once: true });
+    } catch (e) {
+      if (id !== subReq) return;
+      subOn = false; updateCcUI();
+      toast("Subtitle gagal dimuat");
+      console.warn("subtitle:", e);
+    }
   };
   const applySubtitleStyle = () => {
     if (!subOverlay) return;
