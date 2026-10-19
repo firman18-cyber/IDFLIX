@@ -354,6 +354,18 @@ function normEpisodes(filmId, raw, fallbackThumb){
   return list;
 }
 
+/* Catatan: backdrop juga lewat /poster/ (proxy yang sama persis dengan /backdrop/,
+   tapi pasti ada di Worker lama maupun baru).
+   Bot menyimpan gambar sebagai Telegram file_id (bukan URL).
+   Hanya string yang berbentuk file_id (base64url panjang, tanpa titik/garis
+   miring/titik dua) yang diproxy lewat Worker. Selain itu dipakai apa adanya. */
+const mediaUrl = (v, kind) => {
+  const raw = String(v).trim();
+  return /^[A-Za-z0-9_-]{30,}$/.test(raw)
+    ? `${POSTER_WORKER}/${kind}/${encodeURIComponent(raw)}`
+    : raw;
+};
+
 const normalize = (id,f) => {
 
   const t = f.title || "Tanpa Judul";
@@ -385,7 +397,7 @@ const normalize = (id,f) => {
 
   const poster =
     (typeof f.poster === "string" && f.poster.trim())
-      ? f.poster.trim()
+      ? mediaUrl(f.poster, "poster")
       : (
           f.posterFileId
             ? `${POSTER_WORKER}/poster/${encodeURIComponent(String(f.posterFileId))}`
@@ -405,10 +417,10 @@ const normalize = (id,f) => {
 
   const backdrop =
     (typeof f.backdrop === "string" && f.backdrop.trim())
-      ? f.backdrop.trim()
+      ? mediaUrl(f.backdrop, "poster")
       : (
           backdropFileId
-            ? `${POSTER_WORKER}/backdrop/${encodeURIComponent(backdropFileId)}`
+            ? `${POSTER_WORKER}/poster/${encodeURIComponent(backdropFileId)}`
             : poster
         );
 
@@ -886,6 +898,7 @@ const favBtn = f => `
       : ""
   }"
   data-fav="${f.id}"
+  aria-label="${favs.includes(f.id) ? "Hapus dari favorit" : "Tambah ke favorit"}"
 >
 
   ${
@@ -1113,7 +1126,13 @@ function heroSlide(f){
   src="${f.backdrop}"
   alt=""
 >
+<img
+  class="hero-poster"
+  src="${f.poster || f.backdrop}"
+  alt=""
+>
 
+<div class="hero-rate">★ ${f.rating}</div>
 <div class="hero-body">
 
   <span class="badge">
@@ -1124,6 +1143,7 @@ function heroSlide(f){
     ${esc(f.title)}
   </h1>
 
+  <div class="hero-tags">${(f.genre || []).slice(0,3).map(esc).join(" • ")}</div>
   ${meta(f)}
 
   <p>
@@ -1137,7 +1157,7 @@ function heroSlide(f){
       href="#/watch/${f.id}"
     >
       ${ic("play")}
-      Tonton Sekarang
+      <span class="t-lg">Tonton Sekarang</span><span class="t-sm">Putar</span>
     </a>
 
     ${favBtn(f)}
@@ -1524,6 +1544,7 @@ function detail(id){
       <p class="desc">
         ${esc(f.description)}
       </p>
+      ${(f.description || "").length > 130 ? `<button type="button" class="desc-more" onclick="const p=this.previousElementSibling;p.classList.toggle('open');this.textContent=p.classList.contains('open')?'Tutup':'Selengkapnya'">Selengkapnya</button>` : ""}
 
       <div class="actions">
 
@@ -1572,35 +1593,9 @@ function detail(id){
       }
 
       <div class="facts">
-
-        <div>
-          <small>
-            Tahun
-          </small>
-          ${f.year}
-        </div>
-
-        <div>
-          <small>
-            Durasi
-          </small>
-          ${f.duration}
-        </div>
-
-        <div>
-          <small>
-            Rating
-          </small>
-          ★ ${f.rating}/10
-        </div>
-
-        <div>
-          <small>
-            Genre
-          </small>
-          ${f.genre[0]}
-        </div>
-
+        <div><small>Rating</small><b class="star">★</b> ${f.rating}<span class="of">/10</span></div>
+        <div><small>Tahun</small>${f.year}</div>
+        <div><small>${f.isSeries ? "Total" : "Durasi"}</small>${(() => { const [a, b] = String(f.duration).split(" · "); return esc(a) + (b ? `<em class="sub2">${esc(b)}</em>` : ""); })()}</div>
       </div>
 
     </div>
@@ -1834,10 +1829,43 @@ const NAV = [
   ["","Beranda","home"],
   ["movies","Film","film"],
   ["search","Cari","search"],
-  ["categories","Kategori","grid"],
   ["profile","Profil","user"]
 ];
 
+
+window.addEventListener("scroll", () => {
+  const tb = document.querySelector(".topbar");
+  if(tb) tb.classList.toggle("solid", window.scrollY > 40);
+}, { passive: true });
+
+function renderTopChips(seg,q){
+  const el = $("#topChips");
+  document.body.dataset.seg = seg || "";
+  const nav = $("#topNav");
+  if(nav){
+    const mv = seg === "movies", tt = q.get("t"), gg = q.get("g");
+    const links = [
+      ["#/", "Beranda", seg === ""],
+      ["#/movies", "Film", mv && !gg && tt !== "series"],
+      ["#/movies?t=series", "Series", mv && tt === "series" && !gg],
+      ["#/categories", "Kategori", seg === "categories" || (mv && !!gg)],
+      ["#/profile", "Favorit", seg === "profile"]
+    ];
+    nav.innerHTML = links.map(([h, l, on]) =>
+      `<a href="${h}" class="${on ? "on" : ""}"${on ? ' aria-current="page"' : ""}>${l}</a>`).join("");
+  }
+  if(!el) return;
+  const m = seg === "movies", t = q.get("t"), so = q.get("s");
+  const items = [
+    ["Film","#/movies?t=film", m && t==="film"],
+    ["Series","#/movies?t=series", m && t==="series"],
+    ["Terbaru","#/movies?s=new", m && !t && !q.get("g") && so!=="rating"],
+    ["Terbaik","#/movies?s=rating", m && so==="rating"]
+  ];
+  el.innerHTML = items.map(([l,h,on]) =>
+    `<a href="${h}" class="${on?"on":""}">${l}</a>`).join("") +
+    `<a href="#/categories">Kategori<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></a>`;
+}
 
 function renderNav(seg){
 
@@ -2029,6 +2057,7 @@ function router(){
     )();
 
   renderNav(seg === "movies" && q.get("g") ? "categories" : (seg || ""));
+  renderTopChips(seg, q);
 
   window.scrollTo(
     0,
