@@ -70,6 +70,118 @@ const rebuildProgress = () => {
 };
 rebuildProgress();
 
+/* ---------- Series: progres per episode ---------- */
+const progKey = (f, ep) => (f.isSeries && ep ? `${f.id}:${ep.id}` : f.id);
+const metaFrac = m => (m && m.d > 0 ? Math.max(0, Math.min(1, m.t / m.d)) : 0);
+
+function latestEp(f){
+  let best = null;
+  (f.episodes || []).forEach(ep => {
+    const m = progressMeta[progKey(f, ep)];
+    if(m && (!best || (m.updatedAt || 0) > (best.m.updatedAt || 0))) best = { ep, m };
+  });
+  return best;
+}
+
+/* Episode yang diputar saat tombol Tonton/Lanjutkan ditekan. */
+function resumeEp(f){
+  if(!f.isSeries) return null;
+  const l = latestEp(f);
+  if(!l) return f.episodes[0] || null;
+  if(metaFrac(l.m) < .99) return l.ep;
+  return f.episodes[f.episodes.indexOf(l.ep) + 1] || l.ep;
+}
+
+const lastWatchedAt = f =>
+  f.isSeries ? (latestEp(f)?.m.updatedAt || 0) : (progressMeta[f.id]?.updatedAt || 0);
+
+/* Fraksi progres untuk bar kartu (series: episode terakhir yang belum selesai). */
+const filmProgress = f => {
+  if(!f.isSeries) return progress[f.id] || 0;
+  const l = latestEp(f);
+  const fr = l ? metaFrac(l.m) : 0;
+  return fr < .99 ? fr : 0;
+};
+
+/* Tampil di rail "Lanjutkan Menonton". */
+const isContinuing = f => {
+  if(!f.isSeries){
+    const p = progress[f.id] || 0;
+    return p > 0 && p < 1;
+  }
+  const l = latestEp(f);
+  if(!l) return false;
+  return metaFrac(l.m) < .99 || f.episodes.indexOf(l.ep) < f.episodes.length - 1;
+};
+
+/* Objek siap-putar untuk player: film atau satu episode dari series. */
+function playableFor(f, epId){
+  if(!f) return null;
+  let ep = null;
+  if(f.isSeries) ep = f.episodes.find(e => e.id === epId) || resumeEp(f);
+  const p = {
+    ...f,
+    ep,
+    epId: ep ? ep.id : null,
+    key: progKey(f, ep),
+    videos: ep ? ep.videos : f.videos,
+    thumb: (ep && ep.thumb) || f.backdrop
+  };
+  p.next = nextFor(p);
+  return p;
+}
+
+/* Berikutnya: episode selanjutnya, atau film lain bila sudah episode terakhir. */
+function nextFor(p){
+  if(p.isSeries && p.ep){
+    const n = p.episodes[p.episodes.indexOf(p.ep) + 1];
+    if(n) return {
+      href: `#/watch/${encodeURIComponent(p.id)}/${encodeURIComponent(n.id)}`,
+      title: `${n.label}${n.title ? " · " + n.title : ""}`,
+      image: n.thumb || p.backdrop
+    };
+  }
+  const n = nextFilmFor(p);
+  return n ? { href: `#/watch/${encodeURIComponent(n.id)}`, title: n.title, image: n.backdrop } : null;
+}
+
+function episodeRow(f, ep, highlight){
+  const fr = metaFrac(progressMeta[progKey(f, ep)]);
+  const done = fr >= .99;
+  return `
+<a class="ep${highlight ? " on" : ""}" href="#/watch/${encodeURIComponent(f.id)}/${encodeURIComponent(ep.id)}"${highlight ? ' aria-current="true"' : ""}>
+  <div class="ep-thumb">
+    <img loading="lazy" src="${esc(ep.thumb)}" alt="">
+    ${fr > 0 && !done ? `<div class="bar"><i style="width:${Math.round(fr * 100)}%"></i></div>` : ""}
+  </div>
+  <div class="ep-info">
+    <b>${esc(ep.label)}${ep.title ? ` · ${esc(ep.title)}` : ""}</b>
+    <small>${[ep.duration, done ? "Selesai" : "", highlight ? "Sedang diputar" : ""].filter(Boolean).map(esc).join(" • ")}</small>
+  </div>
+</a>`;
+}
+
+function episodesSection(f, curEpId, compact){
+  if(!f.episodes.length)
+    return `<section class="eps"><div class="eps-head"><h2>Episode</h2></div><p class="eps-empty">Belum ada episode.</p></section>`;
+  const cur = curEpId || resumeEp(f)?.id;
+  const curSeason = f.episodes.find(e => e.id === cur)?.season ?? f.seasons[0];
+  const tabs = f.seasons.length > 1
+    ? `<div class="season-tabs" role="tablist">${f.seasons.map(n =>
+        `<button type="button" role="tab" class="chip${n === curSeason ? " on" : ""}" data-season="${n}" aria-selected="${n === curSeason}">Musim ${n}</button>`).join("")}</div>`
+    : "";
+  const lists = f.seasons.map(n =>
+    `<div class="ep-list" data-season-list="${n}"${n === curSeason ? "" : " hidden"}>${
+      f.episodes.filter(e => e.season === n).map(e => episodeRow(f, e, !!curEpId && e.id === curEpId)).join("")
+    }</div>`).join("");
+  return `
+<section class="eps${compact ? " compact" : ""}">
+  <div class="eps-head"><h2>Episode</h2><span>${f.episodes.length} Eps</span></div>
+  ${tabs}
+  ${lists}
+</section>`;
+}
+
 function saveProgressMeta(id, t, d, q){
   if(!(d > 0) || !(t >= 0)) return;
   // Abaikan posisi awal (<5 dtk) agar tidak menimpa progres lama saat film hanya dibuka sebentar.
@@ -188,6 +300,59 @@ function resolveVideoUrl(rawUrl){
 /* =========================================================
    DATA
 ========================================================= */
+
+/* Series: movies/<id>/episodes/<epId> = {season, number, title, description?, duration?,
+   thumbnail?|thumbnailFileId?, videos:{quality:{videoUrl,...}}}. Lihat SERIES.md. */
+const mapVideos = raw => Object.entries(raw && typeof raw === "object" ? raw : {})
+  .map(([quality, v]) => ({
+    quality: String(quality),
+    videoUrl: resolveVideoUrl(typeof v === "string" ? v : String(v?.videoUrl || v?.url || "")),
+    telegramFileId: v?.telegramFileId || v?.fileId || "",
+    format: String(v?.format || ""),
+    provider: String(v?.provider || ""),
+    subtitle: v?.subtitle || null
+  }))
+  .filter(v => v.videoUrl)
+  .sort((a, b) => qualityRank(a.quality) - qualityRank(b.quality));
+
+function normEpisodes(filmId, raw, fallbackThumb){
+  if(!raw || typeof raw !== "object") return [];
+  const entries = Array.isArray(raw) ? raw.map((e, i) => [String(i), e]) : Object.entries(raw);
+  const list = entries
+    .filter(([, e]) => e && typeof e === "object")
+    .map(([id, e], i) => {
+      let videos = mapVideos(e.videos);
+      if(!videos.length && (e.videoUrl || e.url)){
+        videos = [{
+          quality: String(e.quality || "Default"),
+          videoUrl: resolveVideoUrl(e.videoUrl || e.url),
+          telegramFileId: e.telegramFileId || "",
+          format: String(e.format || ""),
+          provider: String(e.provider || ""),
+          subtitle: e.subtitle || null
+        }];
+      }
+      const thumb =
+        (typeof e.thumbnail === "string" && e.thumbnail.trim()) ||
+        (typeof e.poster === "string" && e.poster.trim()) ||
+        (e.thumbnailFileId ? `${POSTER_WORKER}/poster/${encodeURIComponent(String(e.thumbnailFileId))}` : "") ||
+        fallbackThumb;
+      return {
+        id: String(id),
+        season: Number(e.season) || 1,
+        number: Number(e.number ?? e.episode) || i + 1,
+        title: String(e.title || ""),
+        description: String(e.description || ""),
+        duration: String(e.duration || ""),
+        thumb,
+        videos
+      };
+    });
+  list.sort((a, b) => a.season - b.season || a.number - b.number);
+  const multi = new Set(list.map(e => e.season)).size > 1;
+  list.forEach(e => { e.label = multi ? `S${e.season} Eps ${e.number}` : `Eps ${e.number}`; });
+  return list;
+}
 
 const normalize = (id,f) => {
 
@@ -317,11 +482,17 @@ const normalize = (id,f) => {
 
   }
 
+  const episodes = normEpisodes(id, f.episodes, backdrop);
+  const isSeries = f.type === "series" || episodes.length > 0;
+  const seasons = [...new Set(episodes.map(e => e.season))];
+
   return {
-
     id,
-
     title:t,
+    type: isSeries ? "series" : "movie",
+    isSeries,
+    episodes,
+    seasons,
 
     year:f.year || "",
 
@@ -331,7 +502,12 @@ const normalize = (id,f) => {
         : ["Lainnya"],
 
     duration:
-      f.duration || "",
+      f.duration ||
+      (isSeries
+        ? (episodes.length
+            ? (seasons.length > 1 ? `${seasons.length} Musim · ${episodes.length} Eps` : `${episodes.length} Eps`)
+            : "Serial")
+        : ""),
 
     rating:
       Number(f.rating) || 0,
@@ -374,6 +550,8 @@ const normalize = (id,f) => {
   };
 };
 
+
+films = FILMS.map(f => normalize(f.id, f));
 
 /* =========================================================
    FIREBASE
@@ -535,8 +713,7 @@ const card = (
             <i
               style="
                 width:${Math.round(
-                  (progress[f.id] || 0) *
-                  100
+                  filmProgress(f) * 100
                 )}%
               "
             ></i>
@@ -551,9 +728,7 @@ const card = (
     ${esc(f.title)}
   </h3>
 
-  <p>
-    ${f.year} • ${f.genre[0]}
-  </p>
+  <p>${f.year} • ${f.isSeries ? "Series • " : ""}${f.genre[0]}</p>
 
 </a>
 `;
@@ -796,12 +971,7 @@ function home(){
       )
       .slice(0,5);
 
-  const cont =
-    films.filter(
-      f =>
-        progress[f.id] > 0 &&
-        progress[f.id] < 1
-    );
+  const cont = films.filter(isContinuing).sort((a, b) => lastWatchedAt(b) - lastWatchedAt(a));
 
   const heroHTML = `
 
@@ -1034,104 +1204,75 @@ function startHero(top){
 ========================================================= */
 
 const movies = q => {
-
   const g = q.get("g");
+  const t = ["film", "series"].includes(q.get("t")) ? q.get("t") : "all";
+  const so = ["rating", "az"].includes(q.get("s")) ? q.get("s") : "new";
 
-  const list =
-    g
-      ? films.filter(
-          f =>
-            f.genre.includes(g)
-        )
-      : films;
+  let list = g ? films.filter(f => f.genre.includes(g)) : films.slice();
+  if(t === "film") list = list.filter(f => !f.isSeries);
+  if(t === "series") list = list.filter(f => f.isSeries);
+
+  const sorters = {
+    new: (a, b) => (b.addedAt - a.addedAt) || ((Number(b.year) || 0) - (Number(a.year) || 0)),
+    rating: (a, b) => b.rating - a.rating,
+    az: (a, b) => a.title.localeCompare(b.title, "id")
+  };
+  list.sort(sorters[so]);
+
+  const href = patch => {
+    const o = { t, s: so, ...patch };
+    const p = new URLSearchParams();
+    if(g) p.set("g", g);
+    if(o.t !== "all") p.set("t", o.t);
+    if(o.s !== "new") p.set("s", o.s);
+    const qs = p.toString();
+    return "#/movies" + (qs ? "?" + qs : "");
+  };
+  const chip = (label, on, h) => `<a class="chip${on ? " on" : ""}" href="${h}">${label}</a>`;
+  const what = t === "series" ? "series" : "film";
 
   return `
-
-<h1 class="page-title">
-  ${g || "Semua Film"}
-</h1>
-
-<section class="sec">
-
-  ${chips(g,"#/movies")}
-
+${g ? `<a class="back-link" href="#/categories">${ic("back")} Semua kategori</a>` : ""}
+<h1 class="page-title">${g ? esc(g) : "Semua Film"}</h1>
+<section class="sec filters">
+  <div class="chips" role="group" aria-label="Jenis">
+    ${[["all", "Semua"], ["film", "Film"], ["series", "Series"]].map(([v, l]) => chip(l, t === v, href({ t: v }))).join("")}
+  </div>
+  <div class="chips sort" role="group" aria-label="Urutkan">
+    <span class="sort-label">Urutkan</span>
+    ${[["new", "Terbaru"], ["rating", "Rating"], ["az", "A–Z"]].map(([v, l]) => chip(l, so === v, href({ s: v }))).join("")}
+  </div>
 </section>
-
 <section class="sec">
-
-  ${
-    list.length
-      ? grid(list)
-      : empty(
-          "film",
-          "Belum ada film",
-          `Belum ada film di genre ${g}.`
-        )
-  }
-
+  ${list.length
+    ? grid(list)
+    : empty("film", "Belum ada " + what, g ? `Belum ada ${what} di genre ${esc(g)}.` : `Belum ada ${what}.`)}
 </section>
-
 `;
-
 };
-
 
 /* =========================================================
    CATEGORY
 ========================================================= */
 
-const categories = () => `
-
-<h1 class="page-title">
-  Kategori
-</h1>
-
+const categories = () => {
+  const names = [...new Set([...GENRES, ...films.flatMap(f => f.genre)])];
+  const items = names
+    .map((g, i) => ({ g, i, n: films.filter(f => f.genre.includes(g)).length }))
+    .filter(x => x.n > 0);
+  return `
+<h1 class="page-title">Kategori</h1>
 <section class="sec">
-
-  <div class="tiles">
-
-    ${
-      GENRES
-        .map(
-          (g,i)=>`
-
-            <a
-              class="tile"
-              style="
-                background:
-                linear-gradient(
-                  135deg,
-                  ${tileColors[i%9]},
-                  #0d0d14
-                )
-              "
-              href="#/movies?g=${g}"
-            >
-
-              ${g}
-
-              <small>
-                ${
-                  films.filter(
-                    f =>
-                      f.genre.includes(g)
-                  ).length
-                }
-                film
-              </small>
-
-            </a>
-
-          `
-        )
-        .join("")
-    }
-
-  </div>
-
+  ${items.length
+    ? `<div class="tiles">${items.map(({ g, i, n }) => `
+      <a class="tile" style="background:linear-gradient(135deg,${tileColors[i % 9]},#0d0d14)" href="#/movies?g=${encodeURIComponent(g)}">
+        <span class="tile-name">${esc(g)}</span>
+        <small>${n} judul</small>
+      </a>`).join("")}</div>`
+    : empty("film", "Belum ada kategori", "Kategori muncul setelah ada film.")}
 </section>
-
 `;
+};
 
 
 /* =========================================================
@@ -1229,11 +1370,7 @@ function profile(){
         favs.includes(f.id)
     );
 
-  const cont =
-    films.filter(
-      f =>
-        progress[f.id] > 0
-    );
+  const cont = films.filter(f => lastWatchedAt(f) > 0).sort((a, b) => lastWatchedAt(b) - lastWatchedAt(a));
 
   return `
 
@@ -1290,11 +1427,19 @@ ${section(
    DETAIL
 ========================================================= */
 
-const hasResume = f => progress[f.id] > .01 && progress[f.id] < .99;
-const resumeLabel = f => hasResume(f) ? "Lanjutkan" : "Tonton Sekarang";
-const resumeBar = f => hasResume(f)
-  ? `<div class="resume-bar" aria-label="Sudah ditonton ${Math.round(progress[f.id]*100)}%"><i style="width:${Math.round(progress[f.id]*100)}%"></i></div>`
-  : "";
+const hasResume = f =>
+  f.isSeries ? !!latestEp(f) : (progress[f.id] > .01 && progress[f.id] < .99);
+const resumeLabel = f => {
+  if(!hasResume(f)) return "Tonton Sekarang";
+  const e = f.isSeries ? resumeEp(f) : null;
+  return e ? `Lanjutkan ${e.label}` : "Lanjutkan";
+};
+const resumeBar = f => {
+  const p = filmProgress(f);
+  return p > .01 && p < .99
+    ? `<div class="resume-bar" aria-label="Sudah ditonton ${Math.round(p * 100)}%"><i style="width:${Math.round(p * 100)}%"></i></div>`
+    : "";
+};
 
 function detail(id){
 
@@ -1392,6 +1537,7 @@ function detail(id){
         ${favBtn(f)}
       </div>
       ${resumeBar(f)}
+      ${f.isSeries ? episodesSection(f, null) : ""}
 
       ${
         f.trailerUrl
@@ -1549,12 +1695,14 @@ function qualityControls(f){
    WATCH PAGE
 ========================================================= */
 
-function watch(id){
+function watch(id, epId){
 
   const f = byId(id);
 
   if(!f)
     return notFound();
+
+  const cur = playableFor(f, epId);
 
   const rel = films.filter(x => x.id!==id).slice(0,6);
 
@@ -1566,7 +1714,7 @@ function watch(id){
 
     <div class="player" id="player">
 
-      <video id="vid" playsinline preload="metadata" poster="${esc(f.backdrop)}"></video>
+      <video id="vid" playsinline preload="metadata" poster="${esc(cur.thumb)}"></video>
 
       <div class="player-dim" id="playerDim" aria-hidden="true"></div>
 
@@ -1580,7 +1728,7 @@ function watch(id){
         <button type="button" class="player-back" id="playerBack" aria-label="Kembali" title="Kembali">${ic("back")}</button>
         <div class="player-titleblock">
           <div class="player-title">${esc(f.title)}</div>
-          <div class="player-episode">${esc(f.episodeInfo || (f.year ? `Film · ${f.year}` : "Film"))}</div>
+          <div class="player-episode">${esc(cur.ep ? `${cur.ep.label}${cur.ep.title ? " · " + cur.ep.title : ""}` : (f.episodeInfo || (f.year ? `Film · ${f.year}` : "Film")))}</div>
         </div>
       </div>
 
@@ -1643,8 +1791,9 @@ function watch(id){
 
     <div class="watch-info">
       <h1>${esc(f.title)}</h1>
+      ${cur.ep ? `<div class="now-ep"><b>${esc(cur.ep.label)}</b>${cur.ep.title ? ` · ${esc(cur.ep.title)}` : ""}</div>` : ""}
       ${meta(f)}
-      <p class="desc" style="margin-top:14px">${esc(f.description)}</p>
+      <p class="desc" style="margin-top:14px">${esc((cur.ep && cur.ep.description) || f.description)}</p>
       <div class="actions">
         ${favBtn(f)}
         <a class="btn ghost" href="#/film/${f.id}">Detail Film</a>
@@ -1652,7 +1801,8 @@ function watch(id){
     </div>
   </div>
 
-  <aside class="side-list">
+  <aside class="side-list${f.isSeries ? " side-eps" : ""}">
+    ${f.isSeries ? episodesSection(f, cur.epId, true) : `
     <h2>Tonton Berikutnya</h2>
     ${rel.map(x=>`
       <a class="mini" href="#/watch/${x.id}">
@@ -1661,7 +1811,7 @@ function watch(id){
           <h3>${esc(x.title)}</h3>
           <p>${x.year} • ${x.genre[0]}</p>
         </div>
-      </a>`).join("")}
+      </a>`).join("")}`}
   </aside>
 
 </div>
@@ -1845,11 +1995,8 @@ function router(){
       qs || ""
     );
 
-  const [
-    seg,
-    arg
-  ] =
-    path.split("/");
+  const [seg, arg, arg2raw] = path.split("/");
+  const arg2 = arg2raw ? decodeURIComponent(arg2raw) : undefined;
 
   const views = {
 
@@ -1871,9 +2018,7 @@ function router(){
       () =>
         detail(arg),
 
-    watch:
-      () =>
-        watch(arg)
+    watch: () => watch(arg, arg2)
 
   };
 
@@ -1883,9 +2028,7 @@ function router(){
       notFound
     )();
 
-  renderNav(
-    seg || ""
-  );
+  renderNav(seg === "movies" && q.get("g") ? "categories" : (seg || ""));
 
   window.scrollTo(
     0,
@@ -1902,9 +2045,7 @@ function router(){
       q.get("q") || "";
 
   if(seg==="watch")
-    bindPlayer(
-      byId(arg)
-    );
+    bindPlayer(playableFor(byId(arg), arg2));
 
   if(
     seg==="search" &&
@@ -2089,6 +2230,20 @@ document.addEventListener(
       return;
 
     }
+    const seasonBtn = e.target.closest("[data-season]");
+    if(seasonBtn){
+      const box = seasonBtn.closest(".eps");
+      box.querySelectorAll("[data-season]").forEach(b => {
+        const on = b === seasonBtn;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-selected", String(on));
+      });
+      box.querySelectorAll("[data-season-list]").forEach(l => {
+        l.hidden = l.dataset.seasonList !== seasonBtn.dataset.season;
+      });
+      return;
+    }
+
     if(e.target.closest("[data-dismiss-banner]")){
       store.set("idflix:bannerHide", Date.now());
       e.target.closest(".save-banner")?.remove();

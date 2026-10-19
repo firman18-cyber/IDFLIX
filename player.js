@@ -63,7 +63,7 @@ function bindPlayer(f) {
 
   const cleanups = [];
   const on = (target, ev, fn, opt) => { target.addEventListener(ev, fn, opt); cleanups.push(() => target.removeEventListener(ev, fn, opt)); };
-  const track = (name, props) => window.IDFLIX_ANALYTICS && IDFLIX_ANALYTICS.track(name, Object.assign({ movieId: f.id, q: activeQuality }, props));
+  const track = (name, props) => window.IDFLIX_ANALYTICS && IDFLIX_ANALYTICS.track(name, Object.assign({ movieId: f.id, ep: f.epId || undefined, q: activeQuality }, props));
 
   const prefs = store.get("idflix:player", {});
   const savePrefs = () => store.set("idflix:player", prefs);
@@ -97,11 +97,11 @@ function bindPlayer(f) {
   const savePosition = () => {
     const d = duration();
     if (!d || !Number.isFinite(v.currentTime)) return;
-    saveProgressMeta(f.id, ended ? d : v.currentTime, d, activeQuality);
+    saveProgressMeta(f.key || f.id, ended ? d : v.currentTime, d, activeQuality);
     lastSave = Date.now();
   };
   const savedStart = () => {
-    const m = progressMeta[f.id];
+    const m = progressMeta[f.key || f.id];
     return m && m.d > 0 && m.t > 5 && m.t / m.d < .99 ? m.t : 0;
   };
 
@@ -182,7 +182,7 @@ function bindPlayer(f) {
     if (typeof raw === "string") return { url: raw, language: "id", label: "Indonesia" };
     const lang = raw.language || raw.lang || "id";
     const url = raw.url || raw.src || raw.subtitleUrl ||
-      ((raw.fileId || raw.file_id) && `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(quality))}`) || "";
+      ((raw.fileId || raw.file_id) && `${POSTER_WORKER}/subtitle/${encodeURIComponent(String(f.id))}/${encodeURIComponent(String(quality))}${f.epId ? `?ep=${encodeURIComponent(f.epId)}` : ""}`) || "";
     if (!url) return null;
     return { url, language: lang, label: raw.label || (String(lang).toLowerCase() === "id" ? "Indonesia" : String(lang)) };
   };
@@ -477,16 +477,16 @@ function bindPlayer(f) {
   on(v, "leavepictureinpicture", () => { if (subTrackEl?.track) subTrackEl.track.mode = "hidden"; });
 
   /* ---------- kartu "Berikutnya" (F-10) ---------- */
-  const nextFilm = nextFilmFor(f);
+  const nextFilm = f.next || null;
   const showNext = () => {
     if (!nextCard || !nextFilm || nextDismissed) return;
     nextCard.classList.add("on");
   };
   if (nextCard && nextFilm) {
     nextCard.innerHTML = `
-      <img src="${esc(nextFilm.backdrop)}" alt="">
+      <img src="${esc(nextFilm.image)}" alt="">
       <div class="next-info"><small>Berikutnya</small><b>${esc(nextFilm.title)}</b>
-        <div class="next-actions"><a class="next-play" href="#/watch/${esc(nextFilm.id)}">${ic("play")} Putar</a>
+        <div class="next-actions"><a class="next-play" href="${esc(nextFilm.href)}">${ic("play")} Putar</a>
         <button type="button" class="next-close" aria-label="Tutup">Nanti</button></div></div>`;
     on(nextCard, "click", e => {
       e.stopPropagation();
@@ -626,7 +626,7 @@ function bindPlayer(f) {
       setSource(activeIdx, { autoplay: true, startAt: t });
     } else if (b.dataset.act === "report") {
       b.disabled = true;
-      const res = await IDFLIX_SYNC.report(f.id, "broken-link", activeQuality);
+      const res = await IDFLIX_SYNC.report(f.key || f.id, "broken-link", activeQuality);
       const msg = { ok: "Terima kasih, laporan terkirim.", duplicate: "Laporan untuk video ini sudah kami terima.", offline: "Laporan belum bisa dikirim. Coba lagi nanti.", error: "Laporan belum bisa dikirim. Coba lagi nanti." }[res];
       if (errMsg) errMsg.textContent = msg;
       if (res === "offline" || res === "error") b.disabled = false;

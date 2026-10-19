@@ -33,3 +33,19 @@ const FILMS = [
   mk("skyfarm","Sky Farm",2024,["Animation","Comedy"],"1j 34m",7.9,"Seekor domba kecil bermimpi menanam kebun di atas awan bersama sahabat-sahabatnya.","WhatCarCanYouGetForAGrand.mp4","#38bdf8","#4338ca"),
   mk("deepblue","Deep Blue Silence",2021,["Documentary"],"1j 29m",8.0,"Menyelami palung laut terdalam bersama para ilmuwan yang mencari kehidupan tak dikenal.","BigBuckBunny.mp4","#0e7490","#020617")
 ];
+
+// Contoh series (mode demo). Di Firebase: movies/<id>/episodes/<epId> — lihat SERIES.md.
+(() => {
+  const s = FILMS.find(f => f.id === "lastofus");
+  if (!s) return;
+  s.type = "series";
+  s.duration = "";
+  const ep = (season, number, title, duration) => ({ season, number, title, duration, description: `${title} — musim ${season}, episode ${number}.`, videoUrl: V });
+  s.episodes = {
+    s1e1: ep(1, 1, "Ketika Kau Tersesat dalam Kegelapan", "81m"),
+    s1e2: ep(1, 2, "Infected", "53m"),
+    s1e3: ep(1, 3, "Jauh, Jauh Sekali", "76m"),
+    s2e1: ep(2, 1, "Hari Kelima", "58m"),
+    s2e2: ep(2, 2, "Melalui Lembah", "50m")
+  };
+})();
