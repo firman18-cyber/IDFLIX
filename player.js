@@ -467,6 +467,13 @@ function bindPlayer(f) {
   const lockLandscape = async () => { if (isMobileUA()) try { await screen.orientation?.lock?.("landscape"); } catch (e) {} };
   const unlockOrientation = async () => { if (isMobileUA()) try { screen.orientation?.unlock?.(); } catch (e) {} };
   const updateFsUI = () => {
+    // Menu lengkap (kualitas, CC, volume, pengaturan, PiP) hanya tampil di layar penuh;
+    // di mode biasa hanya progres + tombol layar penuh dalam satu baris (lihat style.css).
+    const wasFs = p.classList.contains("is-fs");
+    p.classList.toggle("is-fs", fsActive());
+    // Hanya di tampilan mobile (menu disembunyikan di luar layar penuh): tutup panel yang masih terbuka.
+    if (wasFs && !fsActive() && matchMedia("(max-width:699px)").matches) closePopups();
+    fitCenter?.();
     if (!fsBtn) return;
     fsBtn.setAttribute("aria-label", fsActive() ? "Keluar dari layar penuh" : "Layar penuh");
     fsBtn.title = (fsActive() ? "Keluar dari layar penuh" : "Layar penuh") + " (F)";
@@ -603,13 +610,15 @@ function bindPlayer(f) {
   });
 
   /* ---------- event video ---------- */
-  on(v, "play", () => { updatePlayUI(); scheduleHide(); lastTick = 0; track("play", { t: Math.round(v.currentTime) }); });
+  // Menu bawah (progres, kualitas, pengaturan, dst.) baru muncul setelah video pertama kali diputar.
+  const markStarted = () => p.classList.remove("not-started");
+  on(v, "play", () => { markStarted(); updatePlayUI(); scheduleHide(); lastTick = 0; track("play", { t: Math.round(v.currentTime) }); });
   on(v, "pause", () => {
     updatePlayUI(); clearHide(); p.classList.add("controls-visible");
     if (!v.ended) { savePosition(); track("pause", { t: Math.round(v.currentTime) }); }
   });
   on(v, "waiting", () => { loading?.classList.add("on"); if (!v.seeking && v.readyState < 3 && !v.paused) maybeDowngrade(); });
-  on(v, "playing", () => { loading?.classList.remove("on"); clearTimeout(watchdog); failures = 0; updatePlayUI(); });
+  on(v, "playing", () => { markStarted(); loading?.classList.remove("on"); clearTimeout(watchdog); failures = 0; updatePlayUI(); });
   on(v, "canplay", () => { loading?.classList.remove("on"); clearTimeout(watchdog); p.classList.remove("fail"); });
   on(v, "loadedmetadata", updateTime);
   on(v, "progress", updateBuffer);
@@ -669,11 +678,48 @@ function bindPlayer(f) {
     unlockOrientation();
   };
 
+  /* ---------- posisi tombol play tengah ----------
+     Tujuannya: tombol tetap TEPAT di tengah saat menu bawah tampil. Di player pendek
+     (HP / layar dengan skala besar) ruangnya sempit, jadi: (1) menu bawah dipadatkan
+     (kelas "compact"), (2) tombol dikecilkan sampai muat di atas bar progres, dan
+     (3) hanya jika masih tetap menabrak, tombol diangkat sedikit sisanya. */
+  const MIN_CENTER = 36;
+  const fitCenter = () => {
+    const bar = el("playerControls"), btn = playBtn;
+    if (!bar || !btn || !p.clientHeight) return;
+    p.classList.toggle("compact", p.clientHeight < 240);
+    btn.style.width = btn.style.height = btn.style.flexBasis = "";   // ukuran bawaan CSS
+    const base = btn.offsetHeight;
+    const gap = 6;
+    const centerY = p.clientHeight / 2;
+    const limit = bar.offsetHeight ? p.clientHeight - bar.offsetHeight - gap : p.clientHeight;
+    const maxSize = 2 * (limit - centerY);
+    let size = base;
+    if (maxSize < base) {
+      size = Math.max(MIN_CENTER, Math.floor(maxSize));
+      btn.style.width = btn.style.height = btn.style.flexBasis = size + "px";
+    }
+    const overlap = centerY + size / 2 - limit;
+    const maxLift = Math.max(0, centerY - size / 2 - 4);   // jangan sampai melewati atas player
+    p.style.setProperty("--center-lift", Math.min(Math.max(0, overlap), maxLift) + "px");
+  };
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(fitCenter);
+    ro.observe(p);
+    const barEl = el("playerControls");
+    if (barEl) ro.observe(barEl);
+    cleanups.push(() => ro.disconnect());
+  }
+  on(window, "resize", fitCenter);
+  on(document, "fullscreenchange", fitCenter);
+  on(v, "loadedmetadata", fitCenter);
+
   /* ---------- mulai ---------- */
   applyDisplay();
   applySubtitleStyle();
   updatePlayUI(); updateMuteUI(); updateFsUI(); updateTime(); updateCcUI();
   p.classList.add("controls-visible");
+  fitCenter();
 
   let startIdx = 0;
   if (videos.length > 1) {

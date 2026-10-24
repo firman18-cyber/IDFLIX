@@ -3221,3 +3221,85 @@ img{
   .dots{right:var(--pad);bottom:calc(24% - 36px)}
   .hero + .sec{margin-top:-90px;position:relative;z-index:4}
 }
+
+
+/* Sebelum video pertama kali diputar: hanya tombol play (+ tombol kembali) yang tampil.
+   Progres, waktu, kualitas, dan menu bawah muncul setelah video diputar, supaya tidak
+   menimpa tombol play. Ditaruh paling akhir agar menang atas aturan .controls-visible. */
+.player.not-started .player-controls,
+.player.not-started .player-dim{
+  opacity:0 !important;
+  pointer-events:none !important;
+}
+.player.not-started .sub-overlay{
+  bottom:14px !important;
+}
+
+/* Tombol tengah diangkat (--center-lift dihitung di player.js) agar tidak menimpa bar progres.
+   padding-bottom 2x geser = menggeser titik tengah flex ke atas sebesar geser. */
+.center-controls{
+  box-sizing:border-box;
+  padding-bottom:calc(var(--center-lift, 0px) * 2);
+  transition:opacity .28s ease, padding-bottom .2s ease;
+}
+
+/* Sebelum video diputar menu bawah tersembunyi, jadi tombol play tetap tepat di tengah. */
+.player.not-started .center-controls{
+  padding-bottom:0;
+}
+
+/* Player pendek: menu bawah dipadatkan supaya tombol play tengah muat tanpa bergeser. */
+@media (max-width:699px){
+  .player.compact .player-controls{
+    gap:2px;
+    padding-top:0;
+    padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));
+  }
+  .player.compact .player-bottom-row{
+    min-height:32px;
+  }
+  .player.compact .player-btn{
+    width:32px;
+    height:32px;
+    flex-basis:32px;
+  }
+  .player.compact .player-btn svg{
+    width:18px;
+    height:18px;
+  }
+}
+
+/* ===== Mode biasa (bukan layar penuh): satu baris =====
+   Progres di kiri, tombol layar penuh di kanan tepat di samping progres.
+   Kualitas, CC, volume, pengaturan, dan PiP baru muncul di layar penuh (.is-fs
+   diatur player.js). `display:contents` membuat tombol di baris bawah menjadi
+   anak langsung baris kontrol, sehingga sejajar dengan progres. */
+@media (max-width:699px){
+  .player:not(.is-fs) .player-controls{
+    flex-direction:row;
+    align-items:center;
+    gap:4px;
+    padding:0 6px 6px 12px;
+    padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));
+  }
+  .player:not(.is-fs) .progress-row{
+    flex:1 1 auto;
+    min-width:0;
+    width:auto;
+  }
+  .player:not(.is-fs) .player-bottom-row,
+  .player:not(.is-fs) .player-right-controls{
+    display:contents;
+  }
+  .player:not(.is-fs) .player-left-controls,
+  .player:not(.is-fs) #ccBtn,
+  .player:not(.is-fs) #volumeWrap,
+  .player:not(.is-fs) #settingsWrap,
+  .player:not(.is-fs) #pipBtn{
+    display:none !important;
+  }
+  .player:not(.is-fs) #fullscreenBtn{
+    flex:0 0 auto;
+  }
+
+}

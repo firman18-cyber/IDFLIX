@@ -1707,7 +1707,7 @@ function watch(id, epId){
 
   <div>
 
-    <div class="player" id="player">
+    <div class="player not-started" id="player">
 
       <video id="vid" playsinline preload="metadata" poster="${esc(cur.thumb)}"></video>
 
