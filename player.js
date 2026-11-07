@@ -625,8 +625,23 @@ function bindPlayer(f) {
   on(v, "durationchange", updateTime);
   on(v, "ratechange", () => { if (v.playbackRate !== 1) toast(`Kecepatan ${v.playbackRate}×`); });
   on(v, "volumechange", updateMuteUI);
+  let stRetries = 0;
+  on(v, "loadeddata", () => { stRetries = 0; });
   on(v, "error", () => {
     if (hls) return; // hls.js menangani error-nya sendiri
+    // Proxy Streamtape kadang 503 saat server mereka padat: coba ulang pelan-pelan.
+    const cur = videos[activeIdx];
+    if (cur && /\/streamtape\//.test(String(cur.videoUrl)) && stRetries < 3) {
+      const n = ++stRetries, t = v.currentTime || 0;
+      loading?.classList.add("on");
+      setTimeout(() => {
+        if (videos[activeIdx] !== cur) return;
+        v.src = cur.videoUrl; v.load();
+        if (t > 0) v.addEventListener("loadedmetadata", () => { v.currentTime = t; }, { once: true });
+        v.play().catch(() => {});
+      }, 3000 * n);
+      return;
+    }
     failPlayback(v.error && v.error.code, v.error && v.error.message);
   });
   on(v, "timeupdate", () => {
