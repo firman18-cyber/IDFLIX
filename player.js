@@ -279,6 +279,26 @@ function bindPlayer(f) {
     clearTimeout(watchdog);
     watchdog = setTimeout(() => { if (v.readyState < 2) failPlayback("timeout"); }, 25000);
   };
+  /* ---------- Streamtape langsung dari browser (IP ticket = IP penonton) ---------- */
+  // Ganti ke host "API Server" akunmu bila perlu. JANGAN taruh login/key di sini (kode ini publik).
+  const ST_API = "https://api.streamtape.com";
+  const streamtapeId = (u) => (String(u || "").match(/\/streamtape\/([A-Za-z0-9_-]{6,80})(?:[/?#]|$)/) || [])[1];
+  const resolveStreamtape = async (id) => {
+    const get = async (path) => {
+      const r = await fetch(ST_API + path, { headers: { accept: "application/json" } });
+      const j = await r.json();
+      if (!j || Number(j.status) !== 200) throw new Error("streamtape_" + (j && j.status) + ": " + (j && j.msg));
+      return j.result;
+    };
+    const t = await get("/file/dlticket?file=" + encodeURIComponent(id));
+    if (!t || !t.ticket) throw new Error("streamtape_no_ticket");
+    await new Promise((res) => setTimeout(res, Math.min(15, Number(t.wait_time) || 0) * 1000 + 300));
+    const d = await get("/file/dl?file=" + encodeURIComponent(id) + "&ticket=" + encodeURIComponent(t.ticket));
+    const url = String((d && d.url) || "");
+    if (!/^https:\/\/[^/]*tapecontent\.net\//i.test(url)) throw new Error("streamtape_bad_url");
+    return url;
+  };
+
   const setSource = async (idx, { autoplay = false, startAt = 0 } = {}) => {
     const item = videos[idx];
     if (!item) { failPlayback("no_source"); return; }
@@ -337,6 +357,21 @@ function bindPlayer(f) {
         failPlayback("hls_load", e && e.message);
       }
       return;
+    }
+    const stId = streamtapeId(item.videoUrl);
+    if (stId) {
+      loading?.classList.add("on");
+      try {
+        const direct = await resolveStreamtape(stId);
+        if (videos[activeIdx] !== item) return;
+        v.src = direct;
+        v.load();
+        return;
+      } catch (e) {
+        // CORS/limit/ticket gagal: pakai proxy Worker sebagai cadangan.
+        track("error", { code: "st_direct", detail: String((e && e.message) || e).slice(0, 60) });
+        if (videos[activeIdx] !== item) return;
+      }
     }
     v.src = item.videoUrl;
     v.load();
