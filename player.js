@@ -267,40 +267,7 @@ function bindPlayer(f) {
 
   /* ---------- sumber video: MP4 / HLS ---------- */
   const destroyHls = () => { if (hls) { try { hls.destroy(); } catch (e) {} hls = null; } hlsLevels = []; hlsLevel = -1; };
-  // Cadangan Streamtape: embed resmi mereka (IP link otomatis cocok dengan penonton).
-  const showEmbed = (id) => {
-    clearTimeout(watchdog);
-    try { v.pause(); } catch (e) {}
-    v.style.visibility = "hidden";
-    loading?.classList.remove("on");
-    p.classList.remove("fail");
-    let f = p.querySelector(".st-embed");
-    if (!f) {
-      f = document.createElement("iframe");
-      f.className = "st-embed";
-      f.allow = "autoplay; fullscreen; picture-in-picture";
-      f.allowFullscreen = true;
-      f.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;z-index:20";
-      p.appendChild(f);
-    }
-    f.src = "https://streamtape.com/e/" + encodeURIComponent(id) + "/";
-    track("error", { code: "st_embed" });
-  };
-  const clearEmbed = () => {
-    const f = p.querySelector(".st-embed");
-    if (f) f.remove();
-    v.style.visibility = "";
-  };
   const failPlayback = (code, detail) => {
-    const cur = videos[activeIdx];
-    const stFile = cur && streamtapeId(cur.videoUrl);
-    if (stFile) {
-      if (!p.querySelector(".st-embed")) {
-        console.warn("[IDFLIX] Pemutaran Streamtape gagal, pakai embed. kode:", code, "detail:", detail);
-        showEmbed(stFile);
-      }
-      return;
-    }
     clearTimeout(watchdog);
     loading?.classList.remove("on");
     p.classList.add("fail");
@@ -312,26 +279,6 @@ function bindPlayer(f) {
     clearTimeout(watchdog);
     watchdog = setTimeout(() => { if (v.readyState < 2) failPlayback("timeout"); }, 25000);
   };
-  /* ---------- Streamtape langsung dari browser (IP ticket = IP penonton) ---------- */
-  // Ganti ke host "API Server" akunmu bila perlu. JANGAN taruh login/key di sini (kode ini publik).
-  const ST_API = "https://api.streamtape.com";
-  const streamtapeId = (u) => (String(u || "").match(/\/streamtape\/([A-Za-z0-9_-]{6,80})(?:[/?#]|$)/) || [])[1];
-  const resolveStreamtape = async (id) => {
-    const get = async (path) => {
-      const r = await fetch(ST_API + path, { headers: { accept: "application/json" } });
-      const j = await r.json();
-      if (!j || Number(j.status) !== 200) throw new Error("streamtape_" + (j && j.status) + ": " + (j && j.msg));
-      return j.result;
-    };
-    const t = await get("/file/dlticket?file=" + encodeURIComponent(id));
-    if (!t || !t.ticket) throw new Error("streamtape_no_ticket");
-    await new Promise((res) => setTimeout(res, Math.min(15, Number(t.wait_time) || 0) * 1000 + 300));
-    const d = await get("/file/dl?file=" + encodeURIComponent(id) + "&ticket=" + encodeURIComponent(t.ticket));
-    const url = String((d && d.url) || "");
-    if (!/^https:\/\/[^/]*tapecontent\.net\//i.test(url)) throw new Error("streamtape_bad_url");
-    return url;
-  };
-
   const setSource = async (idx, { autoplay = false, startAt = 0 } = {}) => {
     const item = videos[idx];
     if (!item) { failPlayback("no_source"); return; }
@@ -339,7 +286,6 @@ function bindPlayer(f) {
     activeQuality = item.quality;
     pendingStart = startAt;
     ended = false;
-    clearEmbed();
     p.classList.remove("fail");
     nextCard?.classList.remove("on");
     loading?.classList.add("on");
@@ -391,24 +337,6 @@ function bindPlayer(f) {
         failPlayback("hls_load", e && e.message);
       }
       return;
-    }
-    const stId = streamtapeId(item.videoUrl);
-    if (stId) {
-      loading?.classList.add("on");
-      try {
-        const direct = await resolveStreamtape(stId);
-        if (videos[activeIdx] !== item) return;
-        v.src = direct;
-        v.load();
-        return;
-      } catch (e) {
-        // CORS/limit/ticket gagal: pakai embed Streamtape (proxy Worker terbukti 403 beda-IP).
-        console.warn("[IDFLIX] Streamtape langsung gagal:", e && e.message ? e.message : e);
-        track("error", { code: "st_direct", detail: String((e && e.message) || e).slice(0, 60) });
-        if (videos[activeIdx] !== item) return;
-        showEmbed(stId);
-        return;
-      }
     }
     v.src = item.videoUrl;
     v.load();
