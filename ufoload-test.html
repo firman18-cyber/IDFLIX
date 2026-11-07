@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>IDFLIX · Uji UFOLOAD HLS</title>
+<style>
+:root{--bg:#0b0b0f;--card:#16161d;--bd:#2a2a35;--fg:#eee;--mu:#9a9aa8;--ac:#e50914;--ok:#3ddc84;--er:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif;padding:12px;max-width:900px;margin:auto}
+h1{font-size:18px;margin:4px 0 2px}h2{font-size:14px;margin:0 0 8px;color:var(--mu);text-transform:uppercase;letter-spacing:.05em}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin:10px 0}
+label{display:block;color:var(--mu);font-size:12px;margin:6px 0 2px}
+input,select{width:100%;background:#0f0f14;color:var(--fg);border:1px solid var(--bd);border-radius:6px;padding:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 140px}
+button{background:#262633;color:var(--fg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;cursor:pointer}
+button.p{background:var(--ac);border-color:var(--ac)}button:disabled{opacity:.5}
+video{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px}
+pre{background:#0f0f14;border:1px solid var(--bd);border-radius:6px;padding:8px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;margin:8px 0 0}
+.ok{color:var(--ok)}.er{color:var(--er)}.mu{color:var(--mu)}
+</style></head><body>
+<h1>Uji UFOLOAD → HLS.js (IDFLIX)</h1>
+<div class="mu">Halaman uji terpisah. Tidak menyentuh player produksi. Token admin hanya disimpan di memori halaman ini (hilang saat refresh). API key UFOLOAD tidak pernah ada di sini.</div>
+
+<div class="card"><h2>1 · Koneksi Worker</h2>
+<label>URL Worker idflix-bot1</label><input id="wk" placeholder="https://idflix-bot1.xxx.workers.dev">
+<label>Token admin (UFOLOAD_ADMIN_TOKEN)</label><input id="tk" type="password" autocomplete="off">
+<div class="row" style="margin-top:8px">
+<button id="bPing" class="p">Ping API (auth)</button><button id="bBad">Ping key salah (harus 401)</button><button id="bList">Daftar file</button></div></div>
+
+<div class="card"><h2>2 · Upload / Import (file sampel milik sendiri)</h2>
+<label>Upload file (maks sesuai UFOLOAD_TEST_MAX_BYTES)</label><input id="fl" type="file" accept="video/*">
+<div class="row" style="margin-top:8px"><button id="bUp">Upload</button></div>
+<label>Import dari URL http(s) milik sendiri</label><input id="iu" placeholder="https://contoh.com/sampel.mp4">
+<div class="row" style="margin-top:8px"><button id="bImp">Import</button><button id="bImps">Status import</button></div>
+<label>File ID</label><input id="fid" placeholder="id dari respons upload/import">
+<div class="row" style="margin-top:8px"><button id="bSt">Cek status</button><button id="bPoll">Polling sampai ready</button><button id="bDel">Hapus file uji</button></div></div>
+
+<div class="card"><h2>3 · Signed HLS link & probe</h2>
+<div class="row"><div><label>TTL (detik, 60–2592000)</label><input id="ttl" type="number" value="300"></div>
+<div><label>bind_ip (opsional)</label><select id="bip"><option value="">tidak</option><option value="true">true</option></select></div>
+<div><label>bind_cookie (opsional)</label><select id="bck"><option value="">tidak</option><option value="true">true</option></select></div></div>
+<div class="row" style="margin-top:8px"><button id="bLink" class="p">Buat link & putar</button><button id="bProbe">Probe server (manifest/segmen/CORS)</button><button id="bBrowser">Cek dari browser (CORS nyata)</button></div>
+<div class="row" style="margin-top:8px"><button id="bExp">Uji kedaluwarsa (TTL 60 dtk)</button></div></div>
+
+<div class="card"><h2>4 · Pemutar (HTML5 + HLS.js 1.5.13 + fallback native)</h2>
+<video id="v" controls playsinline preload="metadata"></video>
+<div class="row" style="margin-top:8px"><button data-s="0.25">Seek 25%</button><button data-s="0.5">Seek 50%</button><button data-s="0.95">Seek 95%</button><button id="bSt2">Statistik</button></div>
+<pre id="stat" class="mu">–</pre></div>
+
+<div class="card"><h2>Log</h2><button id="bCopy">Salin log</button><pre id="log"></pre></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+const $=i=>document.getElementById(i);let hls=null,cur=null,lastUrl=null,t0=0,waits=0,levels=[];
+const L=(m,c)=>{const e=$('log');e.insertAdjacentHTML('beforeend',`<div class="${c||''}">[${new Date().toLocaleTimeString()}] ${String(m).replace(/</g,'&lt;')}</div>`);e.scrollTop=1e9};
+const base=()=>$('wk').value.trim().replace(/\/+$/,'');
+async function api(path,opt={}){
+  if(!base()||!$('tk').value){L('Isi URL Worker & token admin dulu','er');throw new Error('config')}
+  const h={Authorization:'Bearer '+$('tk').value,...(opt.headers||{})};
+  if(opt.json){h['Content-Type']='application/json'}
+  const r=await fetch(base()+'/admin/ufoload/'+path,{method:opt.method||'GET',headers:h,body:opt.json?JSON.stringify(opt.json):opt.body});
+  let d;try{d=await r.json()}catch{d={ok:false,error:'respons bukan JSON'}}
+  L(`${opt.method||'GET'} ${path.split('?')[0]} → HTTP ${r.status} ${d.ok?'ok':JSON.stringify({error:d.error,detail:d.detail})}`,d.ok?'ok':'er');
+  return {r,d};
+}
+const show=(d)=>{$('stat').textContent=JSON.stringify(d,null,2)};
+const fid=()=>$('fid').value.trim();
+function adopt(d){const f=d?.data?.file||d?.data;const id=f?.id||f?.file_id||d?.data?.id;if(id&&!fid()){$('fid').value=id;L('File ID diisi otomatis: '+id)}}
+$('bPing').onclick=async()=>{const{d}=await api('ping');show(d)};
+$('bBad').onclick=async()=>{const{r,d}=await api('ping?badkey=1');show(d);L(r.status===401?'PASS: key salah ditolak 401':'Hasil tak terduga: '+r.status,r.status===401?'ok':'er')};
+$('bList').onclick=async()=>{const{d}=await api('list?limit=10');show(d)};
+$('bUp').onclick=async()=>{const f=$('fl').files[0];if(!f)return L('Pilih file','er');
+  const{d}=await api('upload',{method:'POST',body:f,headers:{'X-File-Name':f.name.replace(/[^\x20-\x7E]/g,'_'),'Content-Type':f.type||'application/octet-stream'}});show(d);adopt(d)};
+$('bImp').onclick=async()=>{const{d}=await api('import',{method:'POST',json:{url:$('iu').value.trim()}});show(d);adopt(d)};
+$('bImps').onclick=async()=>{const{d}=await api('imports');show(d)};
+$('bSt').onclick=async()=>{const{d}=await api('file/'+fid());show(d&&{status:d.data?.file?.status||d.data?.status,file:d.data?.file&&{...d.data.file},note:'links disembunyikan dari tampilan'});return d};
+$('bPoll').onclick=async()=>{for(let i=0;i<60;i++){const{d}=await api('file/'+fid());const s=d?.data?.file?.status||d?.data?.status;L('status: '+s);if(s==='ready'||s==='failed'){show(d.data?.file||d.data);return}await new Promise(r=>setTimeout(r,5000))}L('timeout polling','er')};
+$('bDel').onclick=async()=>{if(!confirm('Hapus file uji ini di UFOLOAD?'))return;const{d}=await api('file/'+fid(),{method:'DELETE'});show(d)};
+async function getLink(ttl){
+  const j={ttl:Number(ttl)};if($('bip').value)j.bind_ip=true;if($('bck').value)j.bind_cookie=true;
+  const{d}=await api('link/'+fid(),{method:'POST',json:j});
+  const u=d?.data?.links?.playback||d?.data?.playback;
+  if(!u){L('links.playback tidak ada. Kunci respons: '+Object.keys(d?.data||{}).join(','),'er');return null}
+  L('links.playback ada, berakhiran .m3u8: '+/\.m3u8(\?|$)/.test(u),/\.m3u8(\?|$)/.test(u)?'ok':'er');
+  L('expires_at: '+(d.data.links.expires_at||'-'));lastUrl=u;return u;
+}
+function destroy(){if(hls){try{hls.destroy()}catch{}hls=null}levels=[];waits=0}
+function play(src){
+  const v=$('v');destroy();t0=performance.now();v.removeAttribute('src');
+  if(window.Hls&&Hls.isSupported()){
+    hls=new Hls({capLevelToPlayerSize:true});
+    hls.on(Hls.Events.MANIFEST_PARSED,(_,d)=>{levels=hls.levels.map(l=>l.height||l.bitrate);L('MANIFEST_PARSED level: '+levels.join(', '),'ok')});
+    hls.on(Hls.Events.FRAG_LOADED,()=>{if(t0){L('segmen pertama dimuat dalam '+Math.round(performance.now()-t0)+' ms','ok');t0=0}});
+    hls.on(Hls.Events.ERROR,(_,d)=>{const code=d.response&&d.response.code;L(`HLS ${d.fatal?'FATAL':'warn'}: ${d.type}/${d.details}${code?' HTTP '+code:''}${code===403?' (link kedaluwarsa/ditolak)':''}${d.details==='manifestLoadError'&&!code?' (kemungkinan CORS/jaringan)':''}`,d.fatal?'er':'');
+      if(d.fatal){if(d.type===Hls.ErrorTypes.MEDIA_ERROR)hls.recoverMediaError();else destroy()}});
+    hls.loadSource(src);hls.attachMedia(v);L('Memutar via HLS.js');
+  }else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;L('Memutar via HLS native (Safari/iOS)')}
+  else L('Browser tidak mendukung HLS','er');
+  v.play().catch(e=>L('autoplay ditahan: '+e.name+' (tekan play)'));
+}
+const v=$('v');['waiting','stalled','error'].forEach(e=>v.addEventListener(e,()=>{if(e==='waiting')waits++;L('video event: '+e+(e==='error'&&v.error?' code '+v.error.code:''),e==='error'?'er':'')}));
+['play','pause','seeked','ended'].forEach(e=>v.addEventListener(e,()=>L('video event: '+e+' @'+v.currentTime.toFixed(1)+'s')));
+$('bLink').onclick=async()=>{const u=await getLink($('ttl').value);if(u)play(u)};
+$('bProbe').onclick=async()=>{const{d}=await api('probe',{method:'POST',json:{fileId:fid(),ttl:120,origin:location.origin}});show(d)};
+$('bBrowser').onclick=async()=>{ // CORS nyata dari origin halaman ini
+  const u=lastUrl||await getLink(120);if(!u)return;
+  try{const r=await fetch(u);const t=await r.text();L(`browser→master HTTP ${r.status}, #EXTM3U: ${t.startsWith('#EXTM3U')}, varian: ${(t.match(/EXT-X-STREAM-INF/g)||[]).length}`,r.ok?'ok':'er');
+    const vu=t.split(/\r?\n/).find(l=>l&&!l.startsWith('#'));
+    if(vu){const mu=new URL(vu,u).toString();const m=await fetch(mu);const mt=await m.text();L(`browser→media HTTP ${m.status}, segmen: ${(mt.match(/#EXTINF/g)||[]).length}`,m.ok?'ok':'er');
+      const su=mt.split(/\r?\n/).find(l=>l&&!l.startsWith('#'));
+      if(su){const s=await fetch(new URL(su,mu).toString(),{headers:{Range:'bytes=0-1023'}});L(`browser→segmen HTTP ${s.status}`,s.ok?'ok':'er')}}
+    L('CORS: PASS (browser boleh membaca respons dari origin '+location.origin+')','ok')
+  }catch(e){L('CORS/jaringan GAGAL: '+e.message+' (jika URL benar, ini indikasi CORS memblokir origin ini)','er')}
+};
+$('bExp').onclick=async()=>{const u=await getLink(60);if(!u)return;play(u);L('Menunggu 70 dtk lalu mengambil ulang playlist yang sama…');
+  setTimeout(async()=>{try{const r=await fetch(u);L('Setelah kedaluwarsa: HTTP '+r.status+(r.status===403||r.status===401||r.status===410?' → PASS (ditolak)':' → link MASIH berlaku/perilaku lain'),[401,403,410].includes(r.status)?'ok':'er')}catch(e){L('Setelah kedaluwarsa: gagal fetch ('+e.message+') — bisa CORS pada respons error, cek tab Network','er')}},70000)};
+document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{if(v.duration){v.currentTime=v.duration*Number(b.dataset.s);L('seek ke '+b.dataset.s*100+'%')}else L('durasi belum tersedia','er')});
+$('bSt2').onclick=()=>{const q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};show({currentTime:v.currentTime,duration:v.duration,videoSize:v.videoWidth+'x'+v.videoHeight,buffered:[...Array(v.buffered.length)].map((_,i)=>[v.buffered.start(i),v.buffered.end(i)]),waitingEvents:waits,droppedFrames:q.droppedVideoFrames,levels:levels,currentLevel:hls?hls.currentLevel:null,ua:navigator.userAgent})};
+$('bCopy').onclick=()=>navigator.clipboard.writeText($('log').innerText).then(()=>L('Log disalin'));
+</script></body></html>
