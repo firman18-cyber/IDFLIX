@@ -50,6 +50,7 @@ pre{background:#0f0f14;border:1px solid var(--bd);border-radius:6px;padding:8px;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
+window.addEventListener('unhandledrejection',e=>{try{L('Error: '+(e.reason&&e.reason.message||e.reason),'er')}catch{}});window.addEventListener('error',e=>{try{L('Error JS: '+e.message,'er')}catch{}});
 const $=i=>document.getElementById(i);let hls=null,cur=null,lastUrl=null,t0=0,waits=0,levels=[];
 const L=(m,c)=>{const e=$('log');e.insertAdjacentHTML('beforeend',`<div class="${c||''}">[${new Date().toLocaleTimeString()}] ${String(m).replace(/</g,'&lt;')}</div>`);e.scrollTop=1e9};
 const base=()=>$('wk').value.trim().replace(/\/+$/,'');
@@ -57,7 +58,10 @@ async function api(path,opt={}){
   if(!base()||!$('tk').value){L('Isi URL Worker & token admin dulu','er');throw new Error('config')}
   const h={Authorization:'Bearer '+$('tk').value,...(opt.headers||{})};
   if(opt.json){h['Content-Type']='application/json'}
-  const r=await fetch(base()+'/admin/ufoload/'+path,{method:opt.method||'GET',headers:h,body:opt.json?JSON.stringify(opt.json):opt.body});
+  L('→ '+(opt.method||'GET')+' '+base()+'/admin/ufoload/'+path.split('?')[0]+' (dari origin '+location.origin+')');
+  let r;
+  try{r=await fetch(base()+'/admin/ufoload/'+path,{method:opt.method||'GET',headers:h,body:opt.json?JSON.stringify(opt.json):opt.body})}
+  catch(e){L('GAGAL terhubung ke Worker: '+e.message+'. Penyebab umum: (1) URL Worker salah/belum di-deploy; (2) UFOLOAD_TEST_ENABLED belum 1 (Worker balas 404 tanpa header CORS); (3) UFOLOAD_TEST_ORIGINS tidak sama persis dengan '+location.origin+'; (4) halaman dibuka dari file:// bukan dari situs.','er');throw e}
   let d;try{d=await r.json()}catch{d={ok:false,error:'respons bukan JSON'}}
   L(`${opt.method||'GET'} ${path.split('?')[0]} → HTTP ${r.status} ${d.ok?'ok':JSON.stringify({error:d.error,detail:d.detail})}`,d.ok?'ok':'er');
   return {r,d};
@@ -116,4 +120,5 @@ $('bExp').onclick=async()=>{const u=await getLink(60);if(!u)return;play(u);L('Me
 document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{if(v.duration){v.currentTime=v.duration*Number(b.dataset.s);L('seek ke '+b.dataset.s*100+'%')}else L('durasi belum tersedia','er')});
 $('bSt2').onclick=()=>{const q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};show({currentTime:v.currentTime,duration:v.duration,videoSize:v.videoWidth+'x'+v.videoHeight,buffered:[...Array(v.buffered.length)].map((_,i)=>[v.buffered.start(i),v.buffered.end(i)]),waitingEvents:waits,droppedFrames:q.droppedVideoFrames,levels:levels,currentLevel:hls?hls.currentLevel:null,ua:navigator.userAgent})};
 $('bCopy').onclick=()=>navigator.clipboard.writeText($('log').innerText).then(()=>L('Log disalin'));
+L('Halaman siap. HLS.js '+(window.Hls?('dimuat, didukung='+Hls.isSupported()):'GAGAL dimuat dari cdnjs')+'. Origin: '+location.origin,window.Hls?'ok':'er');
 </script></body></html>
