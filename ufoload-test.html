@@ -39,7 +39,7 @@ pre{background:#0f0f14;border:1px solid var(--bd);border-radius:6px;padding:8px;
 <div><label>bind_ip (opsional)</label><select id="bip"><option value="">tidak</option><option value="true">true</option></select></div>
 <div><label>bind_cookie (opsional)</label><select id="bck"><option value="">tidak</option><option value="true">true</option></select></div></div>
 <div class="row" style="margin-top:8px"><button id="bLink" class="p">Buat link & putar</button><button id="bProbe">Probe server (manifest/segmen/CORS)</button><button id="bBrowser">Cek dari browser (CORS nyata)</button></div>
-<div class="row" style="margin-top:8px"><button id="bExp">Uji kedaluwarsa (TTL 60 dtk)</button></div></div>
+<div class="row" style="margin-top:8px"><button id="bExp">Uji kedaluwarsa (TTL 60 dtk)</button><button id="bRec">Uji pemulihan otomatis (TTL 60 dtk)</button><button id="bRecStop">Hentikan uji pemulihan</button></div></div>
 
 <div class="card"><h2>4 · Pemutar (HTML5 + HLS.js 1.5.13 + fallback native)</h2>
 <video id="v" controls playsinline preload="metadata"></video>
@@ -51,7 +51,7 @@ pre{background:#0f0f14;border:1px solid var(--bd);border-radius:6px;padding:8px;
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
 window.addEventListener('unhandledrejection',e=>{try{L('Error: '+(e.reason&&e.reason.message||e.reason),'er')}catch{}});window.addEventListener('error',e=>{try{L('Error JS: '+e.message,'er')}catch{}});
-const $=i=>document.getElementById(i);let hls=null,cur=null,lastUrl=null,t0=0,waits=0,levels=[];
+const $=i=>document.getElementById(i);let recoverOn=false,renewing=false,recCount=0,tick=null,recTtl=60;let hls=null,cur=null,lastUrl=null,t0=0,waits=0,levels=[];
 const L=(m,c)=>{const e=$('log');e.insertAdjacentHTML('beforeend',`<div class="${c||''}">[${new Date().toLocaleTimeString()}] ${String(m).replace(/</g,'&lt;')}</div>`);e.scrollTop=1e9};
 const base=()=>$('wk').value.trim().replace(/\/+$/,'');
 async function api(path,opt={}){
@@ -89,22 +89,22 @@ async function getLink(ttl){
   L('expires_at: '+(lk.expires_at||d.data.expires_at||'-'));lastUrl=u;return u;
 }
 function destroy(){if(hls){try{hls.destroy()}catch{}hls=null}levels=[];waits=0}
-function play(src){
+function play(src,startAt){
   const v=$('v');destroy();t0=performance.now();v.removeAttribute('src');
   if(window.Hls&&Hls.isSupported()){
-    hls=new Hls({capLevelToPlayerSize:true});
+    hls=new Hls({capLevelToPlayerSize:true,startPosition:startAt>0?startAt:-1});
     hls.on(Hls.Events.MANIFEST_PARSED,(_,d)=>{levels=hls.levels.map(l=>l.height||l.bitrate);L('MANIFEST_PARSED level: '+levels.join(', '),'ok')});
     hls.on(Hls.Events.FRAG_LOADED,()=>{if(t0){L('segmen pertama dimuat dalam '+Math.round(performance.now()-t0)+' ms','ok');t0=0}});
-    hls.on(Hls.Events.ERROR,(_,d)=>{const code=d.response&&d.response.code;L(`HLS ${d.fatal?'FATAL':'warn'}: ${d.type}/${d.details}${code?' HTTP '+code:''}${code===403?' (link kedaluwarsa/ditolak)':''}${d.details==='manifestLoadError'&&!code?' (kemungkinan CORS/jaringan)':''}`,d.fatal?'er':'');
+    hls.on(Hls.Events.ERROR,(_,d)=>{const code=d.response&&d.response.code;if(recoverOn&&[401,403,410].includes(code)){renewAndResume('HTTP '+code+' '+d.details);return}L(`HLS ${d.fatal?'FATAL':'warn'}: ${d.type}/${d.details}${code?' HTTP '+code:''}${code===403?' (link kedaluwarsa/ditolak)':''}${d.details==='manifestLoadError'&&!code?' (kemungkinan CORS/jaringan)':''}`,d.fatal?'er':'');
       if(d.fatal){if(d.type===Hls.ErrorTypes.MEDIA_ERROR)hls.recoverMediaError();else destroy()}});
     hls.loadSource(src);hls.attachMedia(v);L('Memutar via HLS.js');
-  }else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;L('Memutar via HLS native (Safari/iOS)')}
+  }else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;if(startAt>0)v.addEventListener('loadedmetadata',()=>{v.currentTime=startAt},{once:true});L('Memutar via HLS native (Safari/iOS)')}
   else L('Browser tidak mendukung HLS','er');
   v.play().catch(e=>L('autoplay ditahan: '+e.name+' (tekan play)'));
 }
 const v=$('v');['waiting','stalled','error'].forEach(e=>v.addEventListener(e,()=>{if(e==='waiting')waits++;L('video event: '+e+(e==='error'&&v.error?' code '+v.error.code:''),e==='error'?'er':'')}));
 ['play','pause','seeked','ended'].forEach(e=>v.addEventListener(e,()=>L('video event: '+e+' @'+v.currentTime.toFixed(1)+'s')));
-$('bLink').onclick=async()=>{const u=await getLink($('ttl').value);if(u)play(u)};
+$('bLink').onclick=async()=>{stopRec();const u=await getLink($('ttl').value);if(u)play(u)};
 $('bProbe').onclick=async()=>{const{d}=await api('probe',{method:'POST',json:{fileId:fid(),ttl:120,origin:location.origin}});show(d)};
 $('bBrowser').onclick=async()=>{ // CORS nyata dari origin halaman ini
   const u=lastUrl||await getLink(120);if(!u)return;
@@ -116,10 +116,27 @@ $('bBrowser').onclick=async()=>{ // CORS nyata dari origin halaman ini
     L('CORS: PASS (browser boleh membaca respons dari origin '+location.origin+')','ok')
   }catch(e){L('CORS/jaringan GAGAL: '+e.message+' (jika URL benar, ini indikasi CORS memblokir origin ini)','er')}
 };
-$('bExp').onclick=async()=>{const u=await getLink(60);if(!u)return;play(u);L('Menunggu 70 dtk lalu mengambil ulang playlist yang sama…');
+$('bExp').onclick=async()=>{stopRec();const u=await getLink(60);if(!u)return;play(u);L('Menunggu 70 dtk lalu mengambil ulang playlist yang sama…');
   setTimeout(async()=>{try{const r=await fetch(u);L('Setelah kedaluwarsa: HTTP '+r.status+(r.status===403||r.status===401||r.status===410?' → PASS (ditolak)':' → link MASIH berlaku/perilaku lain'),[401,403,410].includes(r.status)?'ok':'er')}catch(e){L('Setelah kedaluwarsa: gagal fetch ('+e.message+') — bisa CORS pada respons error, cek tab Network','er')}},70000)};
 document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{if(v.duration){v.currentTime=v.duration*Number(b.dataset.s);L('seek ke '+b.dataset.s*100+'%')}else L('durasi belum tersedia','er')});
 $('bSt2').onclick=()=>{const q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};show({currentTime:v.currentTime,duration:v.duration,videoSize:v.videoWidth+'x'+v.videoHeight,buffered:[...Array(v.buffered.length)].map((_,i)=>[v.buffered.start(i),v.buffered.end(i)]),waitingEvents:waits,droppedFrames:q.droppedVideoFrames,levels:levels,currentLevel:hls?hls.currentLevel:null,ua:navigator.userAgent})};
 $('bCopy').onclick=()=>navigator.clipboard.writeText($('log').innerText).then(()=>L('Log disalin'));
+
+async function renewAndResume(reason){
+  if(renewing)return;renewing=true;
+  const pos=v.currentTime;
+  L('Link habis ('+reason+') di posisi '+pos.toFixed(1)+'s → minta link baru…','er');
+  try{const u=await getLink(recTtl);if(u){play(u,pos);recCount++;L('Pemulihan #'+recCount+': lanjut dari '+pos.toFixed(1)+'s dengan link baru','ok')}}
+  catch(e){L('Pemulihan GAGAL: '+e.message,'er')}
+  renewing=false;
+}
+function stopRec(){recoverOn=false;if(tick){clearInterval(tick);tick=null}}
+$('bRecStop').onclick=()=>{stopRec();L('Uji pemulihan dihentikan. Total pemulihan: '+recCount)};
+$('bRec').onclick=async()=>{
+  stopRec();recCount=0;recoverOn=true;
+  const u=await getLink(recTtl);if(!u){recoverOn=false;return}
+  play(u);L('Uji pemulihan: TTL '+recTtl+' dtk. Biarkan video berjalan ±3 menit, tab tetap di depan. Pemulihan dicatat di sini.');
+  tick=setInterval(()=>{const b=v.buffered.length?v.buffered.end(v.buffered.length-1)-v.currentTime:0;L('pantau: posisi '+v.currentTime.toFixed(0)+'s, buffer depan '+b.toFixed(0)+'s, '+(v.paused?'jeda':'main')+', pemulihan='+recCount)},15000);
+};
 L('Halaman siap. HLS.js '+(window.Hls?('dimuat, didukung='+Hls.isSupported()):'GAGAL dimuat dari cdnjs')+'. Origin: '+location.origin,window.Hls?'ok':'er');
 </script></body></html>
