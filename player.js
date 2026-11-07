@@ -294,7 +294,13 @@ function bindPlayer(f) {
   const failPlayback = (code, detail) => {
     const cur = videos[activeIdx];
     const stFile = cur && streamtapeId(cur.videoUrl);
-    if (stFile) { if (!p.querySelector(".st-embed")) showEmbed(stFile); return; }
+    if (stFile) {
+      if (!p.querySelector(".st-embed")) {
+        console.warn("[IDFLIX] Pemutaran Streamtape gagal, pakai embed. kode:", code, "detail:", detail);
+        showEmbed(stFile);
+      }
+      return;
+    }
     clearTimeout(watchdog);
     loading?.classList.remove("on");
     p.classList.add("fail");
@@ -397,6 +403,7 @@ function bindPlayer(f) {
         return;
       } catch (e) {
         // CORS/limit/ticket gagal: pakai embed Streamtape (proxy Worker terbukti 403 beda-IP).
+        console.warn("[IDFLIX] Streamtape langsung gagal:", e && e.message ? e.message : e);
         track("error", { code: "st_direct", detail: String((e && e.message) || e).slice(0, 60) });
         if (videos[activeIdx] !== item) return;
         showEmbed(stId);
