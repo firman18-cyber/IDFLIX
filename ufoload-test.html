@@ -82,10 +82,11 @@ $('bDel').onclick=async()=>{if(!confirm('Hapus file uji ini di UFOLOAD?'))return
 async function getLink(ttl){
   const j={ttl:Number(ttl)};if($('bip').value)j.bind_ip=true;if($('bck').value)j.bind_cookie=true;
   const{d}=await api('link/'+fid(),{method:'POST',json:j});
-  const u=d?.data?.links?.playback||d?.data?.playback;
+  const lk=d?.data?.links||d?.data||{};L('bentuk respons link: kunci data = ['+Object.keys(d?.data||{}).join(', ')+']'+(d?.data?.links?'; links = ['+Object.keys(d.data.links).join(', ')+']':''));
+  const u=lk.playback;
   if(!u){L('links.playback tidak ada. Kunci respons: '+Object.keys(d?.data||{}).join(','),'er');return null}
   L('links.playback ada, berakhiran .m3u8: '+/\.m3u8(\?|$)/.test(u),/\.m3u8(\?|$)/.test(u)?'ok':'er');
-  L('expires_at: '+(d.data.links.expires_at||'-'));lastUrl=u;return u;
+  L('expires_at: '+(lk.expires_at||d.data.expires_at||'-'));lastUrl=u;return u;
 }
 function destroy(){if(hls){try{hls.destroy()}catch{}hls=null}levels=[];waits=0}
 function play(src){
