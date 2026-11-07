@@ -267,7 +267,34 @@ function bindPlayer(f) {
 
   /* ---------- sumber video: MP4 / HLS ---------- */
   const destroyHls = () => { if (hls) { try { hls.destroy(); } catch (e) {} hls = null; } hlsLevels = []; hlsLevel = -1; };
+  // Cadangan Streamtape: embed resmi mereka (IP link otomatis cocok dengan penonton).
+  const showEmbed = (id) => {
+    clearTimeout(watchdog);
+    try { v.pause(); } catch (e) {}
+    v.style.visibility = "hidden";
+    loading?.classList.remove("on");
+    p.classList.remove("fail");
+    let f = p.querySelector(".st-embed");
+    if (!f) {
+      f = document.createElement("iframe");
+      f.className = "st-embed";
+      f.allow = "autoplay; fullscreen; picture-in-picture";
+      f.allowFullscreen = true;
+      f.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;z-index:20";
+      p.appendChild(f);
+    }
+    f.src = "https://streamtape.com/e/" + encodeURIComponent(id) + "/";
+    track("error", { code: "st_embed" });
+  };
+  const clearEmbed = () => {
+    const f = p.querySelector(".st-embed");
+    if (f) f.remove();
+    v.style.visibility = "";
+  };
   const failPlayback = (code, detail) => {
+    const cur = videos[activeIdx];
+    const stFile = cur && streamtapeId(cur.videoUrl);
+    if (stFile) { if (!p.querySelector(".st-embed")) showEmbed(stFile); return; }
     clearTimeout(watchdog);
     loading?.classList.remove("on");
     p.classList.add("fail");
@@ -306,6 +333,7 @@ function bindPlayer(f) {
     activeQuality = item.quality;
     pendingStart = startAt;
     ended = false;
+    clearEmbed();
     p.classList.remove("fail");
     nextCard?.classList.remove("on");
     loading?.classList.add("on");
@@ -368,9 +396,11 @@ function bindPlayer(f) {
         v.load();
         return;
       } catch (e) {
-        // CORS/limit/ticket gagal: pakai proxy Worker sebagai cadangan.
+        // CORS/limit/ticket gagal: pakai embed Streamtape (proxy Worker terbukti 403 beda-IP).
         track("error", { code: "st_direct", detail: String((e && e.message) || e).slice(0, 60) });
         if (videos[activeIdx] !== item) return;
+        showEmbed(stId);
+        return;
       }
     }
     v.src = item.videoUrl;
@@ -660,23 +690,8 @@ function bindPlayer(f) {
   on(v, "durationchange", updateTime);
   on(v, "ratechange", () => { if (v.playbackRate !== 1) toast(`Kecepatan ${v.playbackRate}×`); });
   on(v, "volumechange", updateMuteUI);
-  let stRetries = 0;
-  on(v, "loadeddata", () => { stRetries = 0; });
   on(v, "error", () => {
     if (hls) return; // hls.js menangani error-nya sendiri
-    // Proxy Streamtape kadang 503 saat server mereka padat: coba ulang pelan-pelan.
-    const cur = videos[activeIdx];
-    if (cur && /\/streamtape\//.test(String(cur.videoUrl)) && stRetries < 3) {
-      const n = ++stRetries, t = v.currentTime || 0;
-      loading?.classList.add("on");
-      setTimeout(() => {
-        if (videos[activeIdx] !== cur) return;
-        v.src = cur.videoUrl; v.load();
-        if (t > 0) v.addEventListener("loadedmetadata", () => { v.currentTime = t; }, { once: true });
-        v.play().catch(() => {});
-      }, 3000 * n);
-      return;
-    }
     failPlayback(v.error && v.error.code, v.error && v.error.message);
   });
   on(v, "timeupdate", () => {
