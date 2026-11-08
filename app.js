@@ -297,6 +297,11 @@ function resolveVideoUrl(rawUrl){
   return raw;
 }
 
+/* UFOLOAD (Fase 2): Firebase hanya menyimpan ID. Penanda ufoload://<id> hanya ada di memori
+   agar jalur lama (filter videoUrl) tetap bekerja; link asli diminta ke Worker saat diputar. */
+const UFO_ID_RE = /^(?:[A-Za-z0-9]{11}|[A-Za-z0-9]{26})$/;
+const ufoRef = v => (v && typeof v === "object" && v.provider === "ufoload" && UFO_ID_RE.test(String(v.ufoloadId || ""))) ? String(v.ufoloadId) : "";
+
 /* =========================================================
    DATA
 ========================================================= */
@@ -306,10 +311,11 @@ function resolveVideoUrl(rawUrl){
 const mapVideos = raw => Object.entries(raw && typeof raw === "object" ? raw : {})
   .map(([quality, v]) => ({
     quality: String(quality),
-    videoUrl: resolveVideoUrl(typeof v === "string" ? v : String(v?.videoUrl || v?.url || "")),
+    videoUrl: ufoRef(v) ? `ufoload://${ufoRef(v)}` : resolveVideoUrl(typeof v === "string" ? v : String(v?.videoUrl || v?.url || "")),
     telegramFileId: v?.telegramFileId || v?.fileId || "",
-    format: String(v?.format || ""),
+    format: ufoRef(v) ? "hls" : String(v?.format || ""),
     provider: String(v?.provider || ""),
+    ufoloadId: ufoRef(v),
     subtitle: v?.subtitle || null
   }))
   .filter(v => v.videoUrl)
@@ -445,7 +451,7 @@ const normalize = (id,f) => {
     .map(([quality,v])=>({
       quality:String(quality),
 
-      videoUrl: resolveVideoUrl(
+      videoUrl: ufoRef(v) ? `ufoload://${ufoRef(v)}` : resolveVideoUrl(
         typeof v === "string"
           ? v
           : String(
@@ -460,9 +466,11 @@ const normalize = (id,f) => {
         v?.fileId ||
         "",
 
-      format: String(v?.format || ""),
+      format: ufoRef(v) ? "hls" : String(v?.format || ""),
 
       provider: String(v?.provider || ""),
+
+      ufoloadId: ufoRef(v),
 
       subtitle:
         v?.subtitle ||

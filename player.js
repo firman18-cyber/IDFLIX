@@ -78,6 +78,41 @@ function bindPlayer(f) {
   let seekFrom = 0, lastSave = 0, lastTick = 0, playedSecs = 0, watchedMarked = false;
   let stalls = [], pendingStart = 0, nextDismissed = false, ended = false, failures = 0;
 
+  /* ---------- UFOLOAD (Fase 2): link diminta ke Worker, tidak pernah disimpan ---------- */
+  let embedEl = null, ufoRefreshing = false, ufoRefreshTimes = [];
+  const errDefault = errMsg ? errMsg.textContent : null;
+  const ufoWorker = () => String(window.IDFLIX_WORKER_BASE || (typeof POSTER_WORKER !== "undefined" ? POSTER_WORKER : "")).replace(/\/+$/, "");
+  const resolveUfoload = async item => {
+    const path = [f.id, item.quality, f.epId].filter(Boolean).map(encodeURIComponent).join("/");
+    try {
+      const res = await fetch(`${ufoWorker()}/ufoload/play/${path}`, { cache: "no-store" });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d && d.ok && d.url) return { ok: true, mode: d.mode, url: d.url };
+      return { ok: false, code: (d && d.code) || "unavailable" };
+    } catch (e) { return { ok: false, code: "network" }; }
+  };
+  const exitEmbed = () => {
+    if (embedEl) { embedEl.remove(); embedEl = null; }
+    p.classList.remove("embed-mode");
+  };
+  const enterEmbed = url => {
+    clearTimeout(watchdog);
+    loading?.classList.remove("on");
+    if (!/^https:\/\/iframe\.andromedans\.live\//.test(String(url))) { failPlayback("embed_url"); return; }
+    try { v.pause(); } catch (e) {}
+    embedEl = document.createElement("iframe");
+    embedEl.className = "embed-frame";
+    embedEl.src = url;
+    embedEl.title = f.title || "Video";
+    embedEl.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
+    embedEl.allowFullscreen = true;
+    embedEl.referrerPolicy = "origin";
+    p.classList.remove("not-started", "fail");
+    p.classList.add("embed-mode");
+    p.appendChild(embedEl);
+    track("embed");
+  };
+
   /* ---------- util ---------- */
   const fmt = t => {
     if (!Number.isFinite(t) || t < 0) return "0:00";
@@ -287,6 +322,7 @@ function bindPlayer(f) {
     pendingStart = startAt;
     ended = false;
     p.classList.remove("fail");
+    if (errMsg && errDefault != null) errMsg.textContent = errDefault;
     nextCard?.classList.remove("on");
     loading?.classList.add("on");
     destroyHls();
@@ -304,9 +340,35 @@ function bindPlayer(f) {
     };
     v.addEventListener("loadedmetadata", once, { once: true });
 
-    if (isHlsSource(item)) {
+    exitEmbed();
+    let src = item;
+    if (item.provider === "ufoload") {
+      const r = await resolveUfoload(item);
+      if (videos[activeIdx] !== item) return; // sumber berganti saat menunggu Worker
+      if (!r.ok) {
+        v.removeEventListener("loadedmetadata", once);
+        loading?.classList.remove("on");
+        clearTimeout(watchdog);
+        if (r.code === "processing") {
+          failPlayback("ufoload_processing");
+          if (errMsg) errMsg.textContent = "Video sedang diproses. Coba lagi beberapa menit lagi.";
+          return;
+        }
+        // File hilang / kuota habis / Worker gagal: pindah ke provider lain di film yang sama.
+        const alt = videos.findIndex((x, i) => i !== idx && x.provider !== "ufoload");
+        if (alt >= 0) {
+          toast("Beralih ke sumber lain", 2500);
+          track("ufoload_fallback", { code: String(r.code || "").slice(0, 20) });
+          setSource(alt, { autoplay: true, startAt });
+        } else failPlayback("ufoload_" + (r.code || "error"));
+        return;
+      }
+      if (r.mode === "embed") { v.removeEventListener("loadedmetadata", once); enterEmbed(r.url); return; }
+      src = { ...item, videoUrl: r.url, format: "hls" };
+    }
+    if (isHlsSource(src)) {
       if (v.canPlayType("application/vnd.apple.mpegurl")) {
-        v.src = item.videoUrl;
+        v.src = src.videoUrl;
         v.load();
         return;
       }
@@ -326,20 +388,36 @@ function bindPlayer(f) {
           if (l && badge && videos.length === 1) badge.textContent = hlsLevel === -1 ? `Auto · ${l.height ? l.height + "p" : "HD"}` : (l.height ? l.height + "p" : "HD");
         });
         hls.on(Hls.Events.ERROR, (_e, d) => {
+          const code = d.response && d.response.code;
+          if (item.provider === "ufoload" && (code === 401 || code === 403 || code === 410)) { refreshUfoload(); return; }
           if (!d.fatal) return;
           if (d.type === Hls.ErrorTypes.NETWORK_ERROR && netRetries++ < 2) { hls.startLoad(); return; }
           if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !mediaRetried) { mediaRetried = true; hls.recoverMediaError(); return; }
           failPlayback("hls_" + d.type, d.details);
         });
-        hls.loadSource(item.videoUrl);
+        hls.loadSource(src.videoUrl);
         hls.attachMedia(v);
       } catch (e) {
         failPlayback("hls_load", e && e.message);
       }
       return;
     }
-    v.src = item.videoUrl;
+    v.src = src.videoUrl;
     v.load();
+  };
+
+  /* Link UFOLOAD kedaluwarsa (401/403/410): minta link baru, lanjut dari posisi terakhir. Maks 3× per menit. */
+  const refreshUfoload = () => {
+    if (ufoRefreshing) return;
+    const now = Date.now();
+    ufoRefreshTimes = ufoRefreshTimes.filter(t => now - t < 60000);
+    if (ufoRefreshTimes.length >= 3) { failPlayback("ufoload_expired"); return; }
+    ufoRefreshTimes.push(now);
+    ufoRefreshing = true;
+    const t = v.currentTime || 0, wasPlaying = !v.paused;
+    toast("Memperbarui tautan…", 1500);
+    track("ufoload_refresh", { t: Math.round(t) });
+    Promise.resolve(setSource(activeIdx, { autoplay: wasPlaying, startAt: t })).finally(() => { ufoRefreshing = false; });
   };
 
   /* Turunkan kualitas otomatis bila sering buffering (hanya mode Auto, MP4). */
@@ -587,6 +665,7 @@ function bindPlayer(f) {
 
   /* ---------- keyboard (F-11) ---------- */
   on(document, "keydown", e => {
+    if (embedEl) return; // mode embed: kontrol custom nonaktif
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target, tag = t && t.tagName;
     if (tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
@@ -627,6 +706,7 @@ function bindPlayer(f) {
   on(v, "volumechange", updateMuteUI);
   on(v, "error", () => {
     if (hls) return; // hls.js menangani error-nya sendiri
+    if (!embedEl && videos[activeIdx]?.provider === "ufoload" && v.error && (v.error.code === 2 || v.error.code === 4)) { refreshUfoload(); return; }
     failPlayback(v.error && v.error.code, v.error && v.error.message);
   });
   on(v, "timeupdate", () => {
@@ -675,6 +755,7 @@ function bindPlayer(f) {
     clearTimeout(watchdog); clearTimeout(hideTimer); clearTimeout(toastTimer); clearTimeout(tapTimer);
     cleanups.forEach(fn => fn());
     destroyHls();
+    exitEmbed();
     unlockOrientation();
   };
 
